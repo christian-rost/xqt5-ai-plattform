@@ -40,7 +40,6 @@
 
 ## Nächste Umsetzungsschritte
 1. Echte Auth-Flows (Register/Login/JWT Refresh) fertigstellen
-2. Stage-1/2/3 Council-Logik aus `llm-council` portieren
-3. Streaming-Endpunkte (SSE) hinzufügen
-4. RLS und Mandantenmodell in Supabase aktivieren
-5. Integrationstests für API und End-to-End-Chat bauen
+2. Streaming-Endpunkte (SSE) hinzufügen
+3. RLS und Mandantenmodell in Supabase aktivieren
+4. Integrationstests für API und End-to-End-Chat bauen
