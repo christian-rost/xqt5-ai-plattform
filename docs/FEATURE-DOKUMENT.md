@@ -3,6 +3,10 @@
 ## Produktziel
 Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem Wissenszugriff, Workflows und Governance.
 
+## Verbindliche Scope-Regel
+1. Es wird keine Funktion aus `llm-council` in den Hub-Code übernommen.
+2. Benötigte Fähigkeiten von `llm-council` werden nur über eine externe API-Integration genutzt.
+
 ## MVP-Funktionen (Phase 1)
 1. Chat mit Konversationsverwaltung (Erstellen, Laden, Löschen)
 2. Persistenz in Supabase (`conversations`, `messages`)
@@ -15,6 +19,7 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 2. Prompt-Templates und Assistentenprofile
 3. Dokumenten-Upload und RAG (Chunking, Embeddings, Retrieval)
 4. Team- und Tenant-Fähigkeit inkl. RLS
+5. Adapter für externe `llm-council`-API (ohne Codeübernahme)
 
 ## Enterprise-Funktionen (Phase 3)
 1. Workflow-Engine und Agent-Tools

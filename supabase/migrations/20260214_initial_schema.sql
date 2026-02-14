@@ -43,8 +43,8 @@ create table if not exists app_settings (
 
 insert into app_settings (key, value)
 values
-  ('chairman_model', '"google/gemini-3-pro-preview"'),
-  ('council_models', '["openai/gpt-5.1","google/gemini-3-pro-preview","anthropic/claude-sonnet-4.5","x-ai/grok-4"]')
+  ('default_model', '"google/gemini-3-pro-preview"'),
+  ('model_set', '["openai/gpt-5.1","google/gemini-3-pro-preview","anthropic/claude-sonnet-4.5","x-ai/grok-4"]')
 on conflict (key) do nothing;
 
 create table if not exists api_keys (

@@ -6,6 +6,10 @@ Grundgerüst für eine AI-Hub-Anwendung mit:
 - DB: Supabase Postgres
 - Deployment: Coolify mit 2 getrennten Services/Containern
 
+## Architekturvorgabe
+- Es werden keine Funktionen aus `llm-council` in dieses Repository übernommen.
+- Falls Funktionen aus `llm-council` benötigt werden, erfolgt die Nutzung ausschließlich über externe API-Aufrufe.
+
 ## Projektstruktur
 - `frontend/` React/Vite App
 - `backend/` FastAPI API

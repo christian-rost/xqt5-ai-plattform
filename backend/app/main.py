@@ -62,8 +62,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest) -> dic
 
     # Minimal placeholder response for initial scaffold.
     assistant_reply = (
-        "Platzhalter-Antwort: Hier wird im nächsten Schritt die Multi-LLM-Orchestrierung "
-        "(Stage 1/2/3) eingebaut."
+        "Platzhalter-Antwort: Hier wird im nächsten Schritt ein externer "
+        "llm-council-API-Adapter angebunden."
     )
     storage.add_assistant_message(conversation_id, assistant_reply, metadata={"mode": "placeholder"})
 

@@ -11,6 +11,7 @@
 2. Supabase als Managed Postgres für schnelle Time-to-Market
 3. FastAPI wegen guter API-Performance und klarer Pydantic-Validierung
 4. React/Vite wegen schneller Build- und Dev-Zyklen
+5. Externe Kopplung zu `llm-council` nur per HTTP-API, keine Funktions- oder Codeübernahme
 
 ## Implementierte Artefakte
 1. Backend-Grundstruktur unter `backend/app`
@@ -40,6 +41,7 @@
 
 ## Nächste Umsetzungsschritte
 1. Echte Auth-Flows (Register/Login/JWT Refresh) fertigstellen
-2. Streaming-Endpunkte (SSE) hinzufügen
-3. RLS und Mandantenmodell in Supabase aktivieren
-4. Integrationstests für API und End-to-End-Chat bauen
+2. Adapter-Endpunkte für externe `llm-council`-API bauen (Timeouts, Retries, Fehlerabbildung)
+3. Streaming-Endpunkte (SSE) hinzufügen
+4. RLS und Mandantenmodell in Supabase aktivieren
+5. Integrationstests für API und End-to-End-Chat bauen
