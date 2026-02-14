@@ -12,6 +12,14 @@ export default function App() {
     try {
       const data = await api.listConversations()
       setConversations(data)
+
+      if (activeConversation) {
+        const refreshed = data.find((item) => item.id === activeConversation.id)
+        if (!refreshed) {
+          setActiveConversation(null)
+        }
+      }
+
       if (!activeConversation && data.length > 0) {
         const full = await api.getConversation(data[0].id)
         setActiveConversation(full)
@@ -29,7 +37,7 @@ export default function App() {
     setLoading(true)
     setError('')
     try {
-      const created = await api.createConversation('Neue Konversation')
+      const created = await api.createConversation('New Conversation')
       setConversations((prev) => [
         {
           id: created.id,
@@ -79,49 +87,68 @@ export default function App() {
   }
 
   return (
-    <div className="layout">
+    <div className="app">
       <aside className="sidebar">
         <h1>XQT5 AI</h1>
-        <button className="primary" onClick={onCreateConversation} disabled={loading}>
-          Neue Konversation
+        <button className="new-chat-btn" onClick={onCreateConversation} disabled={loading}>
+          New Conversation
         </button>
-        <ul>
-          {conversations.map((item) => (
-            <li key={item.id}>
-              <button onClick={() => onOpenConversation(item.id)}>{item.title}</button>
-            </li>
-          ))}
-        </ul>
+
+        <div className="conversation-list">
+          {conversations.length === 0 ? (
+            <div className="no-conversations">No conversations yet</div>
+          ) : (
+            conversations.map((item) => (
+              <div
+                key={item.id}
+                className={`conversation-item ${activeConversation?.id === item.id ? 'active' : ''}`}
+                onClick={() => onOpenConversation(item.id)}
+              >
+                <span className="conversation-title">{item.title}</span>
+                <span className="message-count">{item.message_count} messages</span>
+              </div>
+            ))
+          )}
+        </div>
       </aside>
 
-      <main className="content">
-        <header>
-          <h2>{activeConversation?.title || 'Keine Konversation ausgewählt'}</h2>
-        </header>
+      <main className="chat-area">
+        {error && <p className="error-banner">{error}</p>}
 
-        {error && <p className="error">{error}</p>}
+        {!activeConversation ? (
+          <div className="welcome">
+            <h2>Welcome to XQT5 AI</h2>
+            <p>Create a new conversation to get started.</p>
+          </div>
+        ) : (
+          <>
+            <section className="messages">
+              {(activeConversation.messages || []).map((m, index) => (
+                <article key={index} className={`message ${m.role}`}>
+                  <div className="message-header">{m.role === 'user' ? 'USER' : 'ASSISTANT'}</div>
+                  <div className="message-content">{m.content || m.stage3?.answer || ''}</div>
+                </article>
+              ))}
+            </section>
 
-        <section className="messages">
-          {(activeConversation?.messages || []).map((m, index) => (
-            <article key={index} className={`bubble ${m.role}`}>
-              <strong>{m.role === 'user' ? 'Du' : 'Assistant'}:</strong>
-              <p>{m.content || m.stage3?.answer || ''}</p>
-            </article>
-          ))}
-        </section>
-
-        <form className="composer" onSubmit={onSendMessage}>
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Nachricht eingeben..."
-            disabled={loading || !activeConversation}
-          />
-          <button className="primary" type="submit" disabled={loading || !activeConversation}>
-            Senden
-          </button>
-        </form>
+            <form className="input-form" onSubmit={onSendMessage}>
+              <textarea
+                className="message-input"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Type your message..."
+                disabled={loading}
+              />
+              <button
+                className="send-button"
+                type="submit"
+                disabled={loading || !message.trim()}
+              >
+                Send
+              </button>
+            </form>
+          </>
+        )}
       </main>
     </div>
   )
