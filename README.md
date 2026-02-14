@@ -1,6 +1,6 @@
 # XQT5 AI Plattform
 
-Grundgerüst für eine AI-Hub-Anwendung (ähnlich neuland.ai Hub) mit:
+Grundgerüst für eine AI-Hub-Anwendung mit:
 - Frontend: React + Vite
 - Backend: FastAPI
 - DB: Supabase Postgres
