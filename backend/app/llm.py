@@ -1,5 +1,5 @@
 import json
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import httpx
 
@@ -239,7 +239,8 @@ async def _call_google(
 
 async def stream_llm(
     messages: List[Dict[str, str]], model: str, temperature: float
-) -> AsyncIterator[str]:
+) -> AsyncIterator[Union[str, Dict]]:
+    """Stream LLM response. Yields text deltas (str), then a final dict with usage info."""
     provider, model_name = parse_model_string(model)
     api_key = _get_api_key(provider)
 
@@ -262,7 +263,7 @@ async def _stream_openai_compatible(
     temperature: float,
     api_key: str,
     provider: str,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[Union[str, Dict]]:
     config = PROVIDER_CONFIG[provider]
     url = f"{config['base_url']}{config['chat_path']}"
     headers = {
@@ -270,7 +271,9 @@ async def _stream_openai_compatible(
         "Content-Type": "application/json",
     }
     payload = _build_openai_compatible_request(messages, model_name, temperature, stream=True)
+    payload["stream_options"] = {"include_usage": True}
 
+    usage = {}
     async with client.stream("POST", url, headers=headers, json=payload) as resp:
         if resp.status_code != 200:
             body = await resp.aread()
@@ -284,11 +287,17 @@ async def _stream_openai_compatible(
                 break
             try:
                 data = json.loads(data_str)
+                # Capture usage from final chunk
+                if data.get("usage"):
+                    usage = data["usage"]
                 delta = data["choices"][0].get("delta", {}).get("content", "")
                 if delta:
                     yield delta
             except (json.JSONDecodeError, KeyError, IndexError):
                 continue
+
+    if usage:
+        yield {"usage": usage}
 
 
 async def _stream_anthropic(
@@ -297,7 +306,7 @@ async def _stream_anthropic(
     model_name: str,
     temperature: float,
     api_key: str,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[Union[str, Dict]]:
     config = PROVIDER_CONFIG["anthropic"]
     url = f"{config['base_url']}{config['chat_path']}"
     headers = {
@@ -307,6 +316,7 @@ async def _stream_anthropic(
     }
     payload = _build_anthropic_request(messages, model_name, temperature, stream=True)
 
+    usage = {}
     async with client.stream("POST", url, headers=headers, json=payload) as resp:
         if resp.status_code != 200:
             body = await resp.aread()
@@ -321,8 +331,20 @@ async def _stream_anthropic(
                     delta = data.get("delta", {}).get("text", "")
                     if delta:
                         yield delta
+                elif data.get("type") == "message_start":
+                    msg_usage = data.get("message", {}).get("usage", {})
+                    if msg_usage:
+                        usage["prompt_tokens"] = msg_usage.get("input_tokens", 0)
+                elif data.get("type") == "message_delta":
+                    delta_usage = data.get("usage", {})
+                    if delta_usage:
+                        usage["completion_tokens"] = delta_usage.get("output_tokens", 0)
             except (json.JSONDecodeError, KeyError):
                 continue
+
+    if usage:
+        usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+        yield {"usage": usage}
 
 
 async def _stream_google(
@@ -331,10 +353,11 @@ async def _stream_google(
     model_name: str,
     temperature: float,
     api_key: str,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[Union[str, Dict]]:
     url = f"{PROVIDER_CONFIG['google']['base_url']}/models/{model_name}:streamGenerateContent?alt=sse&key={api_key}"
     payload = _build_google_request(messages, temperature, stream=True)
 
+    usage = {}
     async with client.stream("POST", url, json=payload) as resp:
         if resp.status_code != 200:
             body = await resp.aread()
@@ -345,6 +368,14 @@ async def _stream_google(
                 continue
             try:
                 data = json.loads(line[6:])
+                # Capture usage metadata from chunks
+                usage_meta = data.get("usageMetadata")
+                if usage_meta:
+                    usage = {
+                        "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+                        "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
+                        "total_tokens": usage_meta.get("totalTokenCount", 0),
+                    }
                 candidates = data.get("candidates", [])
                 if candidates:
                     parts = candidates[0].get("content", {}).get("parts", [])
@@ -354,3 +385,6 @@ async def _stream_google(
                             yield text
             except (json.JSONDecodeError, KeyError):
                 continue
+
+    if usage:
+        yield {"usage": usage}

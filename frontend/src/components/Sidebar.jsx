@@ -1,13 +1,25 @@
+import UsageWidget from './UsageWidget'
+
 export default function Sidebar({
+  user,
+  usage,
   conversations,
   activeId,
   loading,
   onCreateConversation,
   onOpenConversation,
+  onLogout,
 }) {
   return (
     <aside className="sidebar">
-      <h1>XQT5 AI</h1>
+      <div className="sidebar-header">
+        <h1>XQT5 AI</h1>
+        <div className="user-info">
+          <span className="user-name">{user?.username}</span>
+          {user?.is_admin && <span className="admin-badge">Admin</span>}
+        </div>
+      </div>
+
       <button
         className="new-chat-btn"
         onClick={onCreateConversation}
@@ -31,6 +43,11 @@ export default function Sidebar({
             </div>
           ))
         )}
+      </div>
+
+      <div className="sidebar-footer">
+        <UsageWidget usage={usage} />
+        <button className="logout-btn" onClick={onLogout}>Logout</button>
       </div>
     </aside>
   )

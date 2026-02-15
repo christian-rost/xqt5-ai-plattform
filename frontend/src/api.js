@@ -1,14 +1,131 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001'
 
+function getAccessToken() {
+  return localStorage.getItem('access_token')
+}
+
+function getRefreshToken() {
+  return localStorage.getItem('refresh_token')
+}
+
+function setTokens(accessToken, refreshToken) {
+  localStorage.setItem('access_token', accessToken)
+  if (refreshToken) localStorage.setItem('refresh_token', refreshToken)
+}
+
+function clearTokens() {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+}
+
+function authHeaders() {
+  const token = getAccessToken()
+  if (!token) return {}
+  return { Authorization: `Bearer ${token}` }
+}
+
+async function authFetch(url, options = {}) {
+  const headers = { ...authHeaders(), ...(options.headers || {}) }
+  let response = await fetch(url, { ...options, headers })
+
+  // Try refresh on 401
+  if (response.status === 401) {
+    const refreshed = await tryRefresh()
+    if (refreshed) {
+      const retryHeaders = { ...authHeaders(), ...(options.headers || {}) }
+      response = await fetch(url, { ...options, headers: retryHeaders })
+    }
+  }
+
+  return response
+}
+
+async function tryRefresh() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return false
+
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!response.ok) {
+      clearTokens()
+      return false
+    }
+    const data = await response.json()
+    setTokens(data.access_token, null)
+    return true
+  } catch {
+    clearTokens()
+    return false
+  }
+}
+
 export const api = {
+  // Auth
+  async register(username, email, password) {
+    const response = await fetch(`${API_BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.detail || 'Registrierung fehlgeschlagen')
+    }
+    const data = await response.json()
+    setTokens(data.access_token, data.refresh_token)
+    return data.user
+  },
+
+  async login(username, password) {
+    const response = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.detail || 'Login fehlgeschlagen')
+    }
+    const data = await response.json()
+    setTokens(data.access_token, data.refresh_token)
+    return data.user
+  },
+
+  async getMe() {
+    const token = getAccessToken()
+    if (!token) return null
+    const response = await authFetch(`${API_BASE}/api/auth/me`)
+    if (!response.ok) {
+      clearTokens()
+      return null
+    }
+    return response.json()
+  },
+
+  logout() {
+    clearTokens()
+  },
+
+  // Usage
+  async getUsage() {
+    const response = await authFetch(`${API_BASE}/api/usage`)
+    if (!response.ok) throw new Error('Konnte Nutzung nicht laden')
+    return response.json()
+  },
+
+  // Conversations
   async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`)
+    const response = await authFetch(`${API_BASE}/api/conversations`)
     if (!response.ok) throw new Error('Konnte Konversationen nicht laden')
     return response.json()
   },
 
   async createConversation(title = 'New Conversation') {
-    const response = await fetch(`${API_BASE}/api/conversations`, {
+    const response = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
@@ -18,13 +135,13 @@ export const api = {
   },
 
   async getConversation(id) {
-    const response = await fetch(`${API_BASE}/api/conversations/${id}`)
+    const response = await authFetch(`${API_BASE}/api/conversations/${id}`)
     if (!response.ok) throw new Error('Konnte Konversation nicht laden')
     return response.json()
   },
 
   async updateConversation(id, updates) {
-    const response = await fetch(`${API_BASE}/api/conversations/${id}`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -40,7 +157,7 @@ export const api = {
   },
 
   async sendMessage(id, content, model, temperature) {
-    const response = await fetch(`${API_BASE}/api/conversations/${id}/message`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, model, temperature, stream: false }),
@@ -50,7 +167,7 @@ export const api = {
   },
 
   async sendMessageStream(id, content, model, temperature, onDelta, onDone, onError) {
-    const response = await fetch(`${API_BASE}/api/conversations/${id}/message`, {
+    const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, model, temperature, stream: true }),

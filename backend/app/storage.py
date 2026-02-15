@@ -120,3 +120,8 @@ def update_conversation(conversation_id: str, **fields: Any) -> Optional[Dict[st
 def delete_conversation(conversation_id: str) -> bool:
     result = supabase.table("chats").delete().eq("id", conversation_id).execute()
     return len(result.data) > 0
+
+
+def verify_conversation_owner(conversation_id: str, user_id: str) -> bool:
+    result = supabase.table("chats").select("id").eq("id", conversation_id).eq("user_id", user_id).execute()
+    return len(result.data) > 0

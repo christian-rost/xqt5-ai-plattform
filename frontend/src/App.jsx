@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from './api'
+import LoginScreen from './components/LoginScreen'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 
@@ -7,6 +8,10 @@ const DEFAULT_MODEL = 'google/gemini-3-pro-preview'
 const DEFAULT_TEMPERATURE = 0.7
 
 export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [usage, setUsage] = useState(null)
+
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
   const [models, setModels] = useState([])
@@ -16,28 +21,49 @@ export default function App() {
   const [streamingContent, setStreamingContent] = useState(null)
   const [error, setError] = useState('')
 
-  // Load available models
+  // Check auth on mount
+  useEffect(() => {
+    api.getMe().then((u) => {
+      setUser(u)
+      setAuthChecked(true)
+    }).catch(() => setAuthChecked(true))
+  }, [])
+
+  // Load models (public endpoint)
   useEffect(() => {
     api.listModels().then((data) => {
       setModels(data)
-      // Set default to first available model
       const firstAvailable = data.find((m) => m.available)
       if (firstAvailable) setSelectedModel(firstAvailable.id)
     }).catch(() => {})
   }, [])
 
+  const loadUsage = useCallback(async () => {
+    if (!user) return
+    try {
+      const data = await api.getUsage()
+      setUsage(data)
+    } catch {}
+  }, [user])
+
+  // Load usage after login
+  useEffect(() => {
+    if (user) loadUsage()
+  }, [user, loadUsage])
+
   const loadConversations = useCallback(async () => {
+    if (!user) return
     try {
       const data = await api.listConversations()
       setConversations(data)
     } catch (e) {
       setError(e.message)
     }
-  }, [])
+  }, [user])
 
   useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+    if (user) loadConversations()
+  }, [user, loadConversations])
 
   // Sync model/temperature when conversation changes
   useEffect(() => {
@@ -46,6 +72,24 @@ export default function App() {
       if (activeConversation.temperature != null) setTemperature(activeConversation.temperature)
     }
   }, [activeConversation?.id])
+
+  async function handleAuth(mode, { username, email, password }) {
+    if (mode === 'register') {
+      const u = await api.register(username, email, password)
+      setUser(u)
+    } else {
+      const u = await api.login(username, password)
+      setUser(u)
+    }
+  }
+
+  function handleLogout() {
+    api.logout()
+    setUser(null)
+    setConversations([])
+    setActiveConversation(null)
+    setUsage(null)
+  }
 
   async function onCreateConversation() {
     setLoading(true)
@@ -114,6 +158,7 @@ export default function App() {
           const updated = await api.getConversation(activeConversation.id)
           setActiveConversation(updated)
           await loadConversations()
+          await loadUsage()
         },
         (err) => {
           setStreamingContent(null)
@@ -146,14 +191,29 @@ export default function App() {
     }
   }
 
+  if (!authChecked) {
+    return (
+      <div className="app-loading">
+        <div className="loading-spinner" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginScreen onLogin={handleAuth} />
+  }
+
   return (
     <div className="app">
       <Sidebar
+        user={user}
+        usage={usage}
         conversations={conversations}
         activeId={activeConversation?.id}
         loading={loading}
         onCreateConversation={onCreateConversation}
         onOpenConversation={onOpenConversation}
+        onLogout={handleLogout}
       />
       <ChatArea
         conversation={activeConversation}
