@@ -32,15 +32,19 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   Ursache: Beim Bauen von storage.py und Frontend wurde aus dem bestehenden Code die `stage3.answer`-Logik kopiert, obwohl die neuen `chat_messages` keine stage-Felder haben.
   Korrektur: Alle stage1/stage2/stage3/metadata-Referenzen aus storage.py, main.py und ChatArea.jsx entfernt. **Regel: Neuen Code nicht blind aus bestehendem Code kopieren — immer prüfen ob die Felder in der Ziel-Tabelle existieren.**
 
+### 2026-02-15 (Phase B)
+- **Fehler: Shared `users` Tabelle mit llm-council verwendet.**
+  Ursache: Die `users` Tabelle aus der initialen Migration wurde als "Shared" behandelt, obwohl beide Anwendungen komplett getrennt sein sollen. Register schlug fehl ("Email already exists") weil llm-council bereits Einträge hatte.
+  Korrektur: Eigene `app_users` Tabelle erstellt, FKs von `chats` und `chat_token_usage` umgehängt. **Regel: KEINE shared Tabellen. Jede Anwendung nutzt ausschließlich eigene Tabellen.**
+
 ### Offene Risiken
-1. Auth ist als Basis vorbereitet, aber noch nicht umgesetzt (Phase B/D).
-2. Supabase RLS-Policies sind noch nicht aktiviert.
-3. Kein Rate-Limiting auf LLM-Endpoints — jeder kann unbegrenzt Kosten verursachen.
+1. Supabase RLS-Policies sind noch nicht aktiviert.
+2. Kein Rate-Limiting auf LLM-Endpoints — authentifizierte User können unbegrenzt Kosten verursachen.
 
 ## Präventionsmaßnahmen
 1. Vor jedem Merge: API-Smoketest, Frontend-Build, Datenbankschema-Check.
 2. Jede Produktionsänderung erhält eine kurze Post-Deploy-Checkliste.
 3. Bei neu gefundenen Fehlern wird hier ein Eintrag mit Ursache und Fix ergänzt.
-4. **Eigene Tabellen für eigene Features** — llm-council-Schema nicht mitbenutzen.
+4. **KEINE shared Tabellen** — jede Anwendung nutzt nur eigene Tabellen. llm-council-Tabellen (users, conversations, messages, token_usage, app_settings, api_keys, provider_api_keys) nie anfassen.
 5. **Python-Version im Docker-Image prüfen** bevor neue Syntax-Features verwendet werden (aktuell: 3.11).
 6. **Bei neuen Tabellen: kein Copy-Paste aus altem Storage-Code** ohne Feldprüfung.

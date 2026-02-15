@@ -23,12 +23,14 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 6. Markdown-Rendering für Assistant-Nachrichten
 7. Frontend-Refactor in Component-Architektur (7 Komponenten)
 
-## Phase B: User & Kosten-Management (geplant)
-1. Auth-Modul: Register, Login, JWT Refresh
-2. Auth-Middleware für geschützte Endpoints
-3. User/Gruppen-Verwaltung mit Zugriffsrechten auf Modelle
-4. Token-Usage Tracking (Kosten pro Nachricht)
-5. Kosten-Dashboard + Budget-Limits
+## Phase B: User & Kosten-Management (umgesetzt 2026-02-15)
+1. Eigene `app_users` Tabelle (komplett getrennt von llm-council `users`)
+2. Auth-Modul: Register, Login, JWT Access (30min) + Refresh (7d)
+3. Alle Conversation-Endpoints geschützt mit Ownership-Check
+4. Token-Usage Tracking in eigener `chat_token_usage` Tabelle (Kosten pro Anfrage)
+5. Usage-Widget in Sidebar (Tokens, Kosten, Anfragen)
+6. Login-/Register-Screen im Frontend
+7. Einfaches Admin vs. Normaluser (Gruppen auf Phase D verschoben)
 
 ## Phase C: Wissen & Assistenten (geplant)
 1. Datei-Upload (PDF, DOCX, TXT)

@@ -47,17 +47,21 @@
 
 ## Datenbank-Schema-Übersicht
 
+**KEINE shared Tabellen — jede Anwendung nutzt nur eigene Tabellen.**
+
 | Tabelle | Zugehörigkeit | Beschreibung |
 |---------|---------------|--------------|
-| `users` | Shared | Benutzer mit is_admin Flag |
+| `app_users` | XQT5 AI Plattform | Eigene Benutzer mit is_admin Flag |
+| `chats` | XQT5 AI Plattform | Chat-Konversationen mit model/temperature |
+| `chat_messages` | XQT5 AI Plattform | Chat-Nachrichten (clean, ohne Pipeline-Felder) |
+| `chat_token_usage` | XQT5 AI Plattform | Token-Verbrauch + Kosten pro Anfrage |
+| `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
 | `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
 | `messages` | llm-council | Pipeline-Nachrichten (stage1/2/3, metadata) |
 | `token_usage` | llm-council | Token-Verbrauch pro Pipeline-Stage |
-| `app_settings` | Shared | Globale Einstellungen |
-| `api_keys` | Shared | API-Key-Verwaltung |
-| `provider_api_keys` | Shared | Verschlüsselte Provider-Keys |
-| `chats` | Direct Chat | Direkte Chat-Konversationen mit model/temperature |
-| `chat_messages` | Direct Chat | Chat-Nachrichten (clean, ohne Pipeline-Felder) |
+| `app_settings` | llm-council | Globale Einstellungen |
+| `api_keys` | llm-council | API-Key-Verwaltung |
+| `provider_api_keys` | llm-council | Verschlüsselte Provider-Keys |
 
 ## Coolify Setup-Schritte
 1. Repo in Coolify verbinden
@@ -72,11 +76,38 @@
    - Domain: `ai-hub.xqtfive.com`
    - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 4. `CORS_ORIGINS` im Backend auf Frontend-Domain setzen
-5. Supabase-Migrationen ausführen (initial + phase_a)
+5. Supabase-Migrationen ausführen (initial + phase_a + phase_b)
+
+### Phase B: User & Kosten-Management (2026-02-15)
+1. **Eigene User-Tabelle** (`app_users`):
+   - Komplett getrennt von llm-council's `users` Tabelle
+   - Migration: `supabase/migrations/20260215_phase_b_own_users_table.sql`
+2. **Auth-Modul** (`backend/app/auth.py`):
+   - bcrypt Passwort-Hashing, JWT Access-Token (30min) + Refresh-Token (7d)
+   - FastAPI Dependencies: `get_current_user`, `get_current_admin`
+   - Register mit Username/Email Duplikat-Check
+3. **Token-Tracking** (`backend/app/token_tracking.py`):
+   - Eigene `chat_token_usage` Tabelle (nicht llm-council's `token_usage`)
+   - Kosten-Schätzung pro Modell (COST_PER_1M_TOKENS)
+   - Usage-Erfassung nach jedem LLM-Call (streaming + non-streaming)
+   - Migration: `supabase/migrations/20260215_phase_b_auth_token_tracking.sql`
+4. **Geschützte Endpoints**:
+   - Alle `/api/conversations/*` mit `Depends(get_current_user)` + Ownership-Check
+   - Auth-Endpoints: `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/me`
+   - Usage-Endpoint: `/api/usage`
+5. **LLM Usage-Erfassung** (`backend/app/llm.py`):
+   - Stream-Generatoren liefern Usage-Dict als letztes Element
+   - OpenAI: `stream_options: {"include_usage": true}`
+   - Anthropic: `message_start` + `message_delta` Events
+   - Google: `usageMetadata` aus letztem Chunk
+6. **Frontend**:
+   - Login/Register-Screen (`LoginScreen.jsx`)
+   - Token-Management in `api.js` (localStorage, auto-refresh bei 401)
+   - Usage-Widget in Sidebar (`UsageWidget.jsx`)
+   - Auth-State in `App.jsx` (Loading → Login → App)
 
 ## Nächste Umsetzungsschritte
-1. **Phase B**: Auth (Register/Login/JWT), User/Gruppen-Verwaltung, Token-Tracking, Kosten-Dashboard
-2. **Phase C**: Datei-Upload, RAG-Pipeline, KI-Assistenten, Prompt-Templates
-3. **Phase D**: Admin-Dashboard, Workflow-Engine, Audit-Logs, SSO
-4. RLS und Mandantenmodell in Supabase aktivieren
-5. Integrationstests für API und End-to-End-Chat
+1. **Phase C**: Datei-Upload, RAG-Pipeline, KI-Assistenten, Prompt-Templates
+2. **Phase D**: Admin-Dashboard, Workflow-Engine, Audit-Logs, SSO
+3. RLS und Mandantenmodell in Supabase aktivieren
+4. Integrationstests für API und End-to-End-Chat
