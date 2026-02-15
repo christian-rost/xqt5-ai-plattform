@@ -122,8 +122,8 @@ async def _auto_name_conversation(conversation_id: str, user_message: str) -> No
         logger.warning(f"Auto-naming failed for {conversation_id}: {e}")
 
 
-@app.post("/api/conversations/{conversation_id}/message")
-async def send_message(conversation_id: str, request: SendMessageRequest) -> StreamingResponse | dict:
+@app.post("/api/conversations/{conversation_id}/message", response_model=None)
+async def send_message(conversation_id: str, request: SendMessageRequest):
     conversation = storage.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
