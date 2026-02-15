@@ -3,31 +3,43 @@ from typing import Any, Dict, List, Optional
 from .database import supabase
 
 
-def create_conversation(title: str = "New Conversation", user_id: Optional[str] = None) -> Dict[str, Any]:
-    payload = {
+def create_conversation(
+    title: str = "New Conversation",
+    user_id: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: Optional[float] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "title": title,
         "user_id": user_id,
     }
-    result = supabase.table("conversations").insert(payload).execute()
+    if model is not None:
+        payload["model"] = model
+    if temperature is not None:
+        payload["temperature"] = temperature
+
+    result = supabase.table("chats").insert(payload).execute()
     row = result.data[0]
     return {
         "id": row["id"],
         "created_at": row["created_at"],
         "title": row["title"],
+        "model": row.get("model"),
+        "temperature": float(row["temperature"]) if row.get("temperature") is not None else None,
         "messages": [],
     }
 
 
 def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    query = supabase.table("conversations").select("id,created_at,title,user_id").order("created_at", desc=True)
+    query = supabase.table("chats").select("id,created_at,title,user_id").order("created_at", desc=True)
     if user_id:
         query = query.eq("user_id", user_id)
 
     result = query.execute()
     items: List[Dict[str, Any]] = []
     for row in result.data:
-        count_result = supabase.table("messages").select("id", count="exact").eq("conversation_id", row["id"]).execute()
+        count_result = supabase.table("chat_messages").select("id", count="exact").eq("chat_id", row["id"]).execute()
         items.append(
             {
                 "id": row["id"],
@@ -40,64 +52,71 @@ def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
-    conv_result = supabase.table("conversations").select("*").eq("id", conversation_id).execute()
+    conv_result = supabase.table("chats").select("*").eq("id", conversation_id).execute()
     if not conv_result.data:
         return None
 
     conv = conv_result.data[0]
     msg_result = (
-        supabase.table("messages")
+        supabase.table("chat_messages")
         .select("*")
-        .eq("conversation_id", conversation_id)
+        .eq("chat_id", conversation_id)
         .order("created_at")
         .execute()
     )
 
     messages: List[Dict[str, Any]] = []
     for msg in msg_result.data:
-        if msg["role"] == "user":
-            messages.append({"role": "user", "content": msg.get("content", "")})
-        else:
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.get("content"),
-                    "stage1": msg.get("stage1"),
-                    "stage2": msg.get("stage2"),
-                    "stage3": msg.get("stage3"),
-                    "metadata": msg.get("metadata"),
-                }
-            )
+        messages.append({
+            "role": msg["role"],
+            "content": msg["content"],
+            "model": msg.get("model"),
+        })
 
     return {
         "id": conv["id"],
         "created_at": conv["created_at"],
         "title": conv["title"],
+        "model": conv.get("model"),
+        "temperature": float(conv["temperature"]) if conv.get("temperature") is not None else None,
         "messages": messages,
     }
 
 
 def add_user_message(conversation_id: str, content: str) -> None:
-    supabase.table("messages").insert(
-        {"conversation_id": conversation_id, "role": "user", "content": content}
+    supabase.table("chat_messages").insert(
+        {"chat_id": conversation_id, "role": "user", "content": content}
     ).execute()
 
 
-def add_assistant_message(conversation_id: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+def add_assistant_message(
+    conversation_id: str,
+    content: str,
+    model: Optional[str] = None,
+) -> None:
     payload: Dict[str, Any] = {
-        "conversation_id": conversation_id,
+        "chat_id": conversation_id,
         "role": "assistant",
         "content": content,
-        "stage1": [],
-        "stage2": [],
-        "stage3": {"answer": content},
     }
-    if metadata:
-        payload["metadata"] = metadata
+    if model:
+        payload["model"] = model
 
-    supabase.table("messages").insert(payload).execute()
+    supabase.table("chat_messages").insert(payload).execute()
+
+
+def update_conversation(conversation_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
+    allowed = {"title", "model", "temperature"}
+    update_data = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not update_data:
+        return get_conversation(conversation_id)
+
+    result = supabase.table("chats").update(update_data).eq("id", conversation_id).execute()
+    if not result.data:
+        return None
+    return get_conversation(conversation_id)
 
 
 def delete_conversation(conversation_id: str) -> bool:
-    result = supabase.table("conversations").delete().eq("id", conversation_id).execute()
+    result = supabase.table("chats").delete().eq("id", conversation_id).execute()
     return len(result.data) > 0

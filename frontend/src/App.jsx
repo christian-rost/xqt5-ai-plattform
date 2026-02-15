@@ -1,37 +1,51 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { api } from './api'
+import Sidebar from './components/Sidebar'
+import ChatArea from './components/ChatArea'
+
+const DEFAULT_MODEL = 'google/gemini-3-pro-preview'
+const DEFAULT_TEMPERATURE = 0.7
 
 export default function App() {
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
-  const [message, setMessage] = useState('')
+  const [models, setModels] = useState([])
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
+  const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
   const [loading, setLoading] = useState(false)
+  const [streamingContent, setStreamingContent] = useState(null)
   const [error, setError] = useState('')
 
-  async function loadConversations() {
+  // Load available models
+  useEffect(() => {
+    api.listModels().then((data) => {
+      setModels(data)
+      // Set default to first available model
+      const firstAvailable = data.find((m) => m.available)
+      if (firstAvailable) setSelectedModel(firstAvailable.id)
+    }).catch(() => {})
+  }, [])
+
+  const loadConversations = useCallback(async () => {
     try {
       const data = await api.listConversations()
       setConversations(data)
-
-      if (activeConversation) {
-        const refreshed = data.find((item) => item.id === activeConversation.id)
-        if (!refreshed) {
-          setActiveConversation(null)
-        }
-      }
-
-      if (!activeConversation && data.length > 0) {
-        const full = await api.getConversation(data[0].id)
-        setActiveConversation(full)
-      }
     } catch (e) {
       setError(e.message)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadConversations()
-  }, [])
+  }, [loadConversations])
+
+  // Sync model/temperature when conversation changes
+  useEffect(() => {
+    if (activeConversation) {
+      if (activeConversation.model) setSelectedModel(activeConversation.model)
+      if (activeConversation.temperature != null) setTemperature(activeConversation.temperature)
+    }
+  }, [activeConversation?.id])
 
   async function onCreateConversation() {
     setLoading(true)
@@ -68,88 +82,91 @@ export default function App() {
     }
   }
 
-  async function onSendMessage(event) {
-    event.preventDefault()
-    if (!activeConversation || !message.trim()) return
+  async function onSendMessage(content) {
+    if (!activeConversation) return
 
-    setLoading(true)
     setError('')
+
+    // Optimistic: show user message immediately
+    const optimisticMessages = [
+      ...(activeConversation.messages || []),
+      { role: 'user', content },
+    ]
+    setActiveConversation((prev) => ({ ...prev, messages: optimisticMessages }))
+    setLoading(true)
+    setStreamingContent('')
+
     try {
-      const updated = await api.sendMessage(activeConversation.id, message.trim())
-      setActiveConversation(updated)
-      setMessage('')
-      await loadConversations()
+      await api.sendMessageStream(
+        activeConversation.id,
+        content,
+        selectedModel,
+        temperature,
+        (delta) => {
+          setStreamingContent((prev) => (prev || '') + delta)
+        },
+        async (fullContent) => {
+          // Stream complete — finalize
+          setStreamingContent(null)
+          setLoading(false)
+
+          // Refresh conversation to get stored messages
+          const updated = await api.getConversation(activeConversation.id)
+          setActiveConversation(updated)
+          await loadConversations()
+        },
+        (err) => {
+          setStreamingContent(null)
+          setLoading(false)
+          setError(err)
+        }
+      )
     } catch (e) {
-      setError(e.message)
-    } finally {
+      setStreamingContent(null)
       setLoading(false)
+      setError(e.message)
+    }
+  }
+
+  async function onModelChange(model) {
+    setSelectedModel(model)
+    if (activeConversation) {
+      try {
+        await api.updateConversation(activeConversation.id, { model })
+      } catch {}
+    }
+  }
+
+  async function onTemperatureChange(temp) {
+    setTemperature(temp)
+    if (activeConversation) {
+      try {
+        await api.updateConversation(activeConversation.id, { temperature: temp })
+      } catch {}
     }
   }
 
   return (
     <div className="app">
-      <aside className="sidebar">
-        <h1>XQT5 AI</h1>
-        <button className="new-chat-btn" onClick={onCreateConversation} disabled={loading}>
-          New Conversation
-        </button>
-
-        <div className="conversation-list">
-          {conversations.length === 0 ? (
-            <div className="no-conversations">No conversations yet</div>
-          ) : (
-            conversations.map((item) => (
-              <div
-                key={item.id}
-                className={`conversation-item ${activeConversation?.id === item.id ? 'active' : ''}`}
-                onClick={() => onOpenConversation(item.id)}
-              >
-                <span className="conversation-title">{item.title}</span>
-                <span className="message-count">{item.message_count} messages</span>
-              </div>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <main className="chat-area">
-        {error && <p className="error-banner">{error}</p>}
-
-        {!activeConversation ? (
-          <div className="welcome">
-            <h2>Welcome to XQT5 AI</h2>
-            <p>Create a new conversation to get started.</p>
-          </div>
-        ) : (
-          <>
-            <section className="messages">
-              {(activeConversation.messages || []).map((m, index) => (
-                <article key={index} className={`message ${m.role}`}>
-                  <div className="message-header">{m.role === 'user' ? 'USER' : 'ASSISTANT'}</div>
-                  <div className="message-content">{m.content || m.stage3?.answer || ''}</div>
-                </article>
-              ))}
-            </section>
-
-            <form className="input-form" onSubmit={onSendMessage}>
-              <textarea
-                className="message-input"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Type your message..."
-                disabled={loading}
-              />
-              <button
-                className="send-button"
-                type="submit"
-                disabled={loading || !message.trim()}
-              >
-                Send
-              </button>
-            </form>
-          </>
-        )}
-      </main>
+      <Sidebar
+        conversations={conversations}
+        activeId={activeConversation?.id}
+        loading={loading}
+        onCreateConversation={onCreateConversation}
+        onOpenConversation={onOpenConversation}
+      />
+      <ChatArea
+        conversation={activeConversation}
+        models={models}
+        selectedModel={selectedModel}
+        temperature={temperature}
+        loading={loading}
+        streamingContent={streamingContent}
+        error={error}
+        onSend={onSendMessage}
+        onModelChange={onModelChange}
+        onTemperatureChange={onTemperatureChange}
+      />
     </div>
   )
 }
