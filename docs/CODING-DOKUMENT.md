@@ -18,12 +18,29 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - Fehler: `python -m compileall` initial ohne `PYTHONPYCACHEPREFIX` ausgeführt.
   Ursache: In der Sandbox wurde in einen nicht erlaubten Standard-Cachepfad geschrieben.
   Korrektur: Compile-Checks künftig mit `PYTHONPYCACHEPREFIX=/tmp/pythoncache` ausführen.
-- Offene Risiken (noch kein Fehler):
-  1. Auth ist als Basis vorbereitet, aber noch nicht vollständig umgesetzt.
-  2. Externer `llm-council`-API-Adapter ist noch nicht umgesetzt.
-  3. Supabase RLS-Policies sind noch nicht aktiviert.
+
+### 2026-02-15 (Phase A)
+- **Fehler: llm-council-Tabellen für Chat wiederverwendet.**
+  Ursache: Die bestehenden `conversations`/`messages` Tabellen (mit stage1/stage2/stage3 Pipeline-Feldern) wurden fälschlicherweise für den direkten Chat mitbenutzt, statt eigene Tabellen anzulegen.
+  Korrektur: Eigene Tabellen `chats` und `chat_messages` erstellt. **Regel: llm-council-Tabellen (conversations, messages, token_usage) nie für eigene Features nutzen. Immer eigene Tabellen anlegen.**
+
+- **Fehler: Python 3.11 inkompatible Type-Annotation `StreamingResponse | dict`.**
+  Ursache: Union-Syntax mit `|` in Return-Type ist in Python 3.11 kein valider Pydantic-Typ für FastAPI Response-Models. Docker-Image nutzt Python 3.11-slim.
+  Korrektur: `response_model=None` im Decorator verwenden, Return-Type-Annotation weglassen. **Regel: Bei Endpoints die sowohl JSON als auch StreamingResponse zurückgeben, immer `response_model=None` setzen und keine Union-Type-Annotation verwenden.**
+
+- **Fehler: stage3-Referenzen in neuem Code übernommen.**
+  Ursache: Beim Bauen von storage.py und Frontend wurde aus dem bestehenden Code die `stage3.answer`-Logik kopiert, obwohl die neuen `chat_messages` keine stage-Felder haben.
+  Korrektur: Alle stage1/stage2/stage3/metadata-Referenzen aus storage.py, main.py und ChatArea.jsx entfernt. **Regel: Neuen Code nicht blind aus bestehendem Code kopieren — immer prüfen ob die Felder in der Ziel-Tabelle existieren.**
+
+### Offene Risiken
+1. Auth ist als Basis vorbereitet, aber noch nicht umgesetzt (Phase B/D).
+2. Supabase RLS-Policies sind noch nicht aktiviert.
+3. Kein Rate-Limiting auf LLM-Endpoints — jeder kann unbegrenzt Kosten verursachen.
 
 ## Präventionsmaßnahmen
 1. Vor jedem Merge: API-Smoketest, Frontend-Build, Datenbankschema-Check.
 2. Jede Produktionsänderung erhält eine kurze Post-Deploy-Checkliste.
 3. Bei neu gefundenen Fehlern wird hier ein Eintrag mit Ursache und Fix ergänzt.
+4. **Eigene Tabellen für eigene Features** — llm-council-Schema nicht mitbenutzen.
+5. **Python-Version im Docker-Image prüfen** bevor neue Syntax-Features verwendet werden (aktuell: 3.11).
+6. **Bei neuen Tabellen: kein Copy-Paste aus altem Storage-Code** ohne Feldprüfung.
