@@ -90,7 +90,7 @@ def get_current_admin(user: Dict = Depends(get_current_user)) -> Dict:
 
 def register_user(username: str, email: str, password: str) -> Dict:
     # Check if username already exists
-    existing = supabase.table("users").select("id").eq("username", username).execute()
+    existing = supabase.table("app_users").select("id").eq("username", username).execute()
     if existing.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -98,7 +98,7 @@ def register_user(username: str, email: str, password: str) -> Dict:
         )
 
     # Check if email already exists
-    existing_email = supabase.table("users").select("id").eq("email", email).execute()
+    existing_email = supabase.table("app_users").select("id").eq("email", email).execute()
     if existing_email.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -106,7 +106,7 @@ def register_user(username: str, email: str, password: str) -> Dict:
         )
 
     password_hash = hash_password(password)
-    result = supabase.table("users").insert({
+    result = supabase.table("app_users").insert({
         "username": username,
         "email": email,
         "password_hash": password_hash,
@@ -124,7 +124,7 @@ def register_user(username: str, email: str, password: str) -> Dict:
 
 
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
-    result = supabase.table("users").select("*").eq("username", username).execute()
+    result = supabase.table("app_users").select("*").eq("username", username).execute()
     if not result.data:
         return None
 
@@ -143,7 +143,7 @@ def authenticate_user(username: str, password: str) -> Optional[Dict]:
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict]:
-    result = supabase.table("users").select("id,username,email,is_admin,created_at").eq("id", user_id).execute()
+    result = supabase.table("app_users").select("id,username,email,is_admin,created_at").eq("id", user_id).execute()
     if not result.data:
         return None
     return result.data[0]
