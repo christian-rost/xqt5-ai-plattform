@@ -321,6 +321,17 @@ def _build_azure_url(model_id: str, model_name: str) -> str:
     return f"{endpoint_url}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
 
 
+def _build_azure_request(
+    messages: List[Dict[str, str]], model_name: str, stream: bool
+) -> Dict[str, Any]:
+    """Build Azure request without temperature (unsupported by GPT-5.x)."""
+    return {
+        "model": model_name,
+        "messages": messages,
+        "stream": stream,
+    }
+
+
 async def _call_azure(
     client: httpx.AsyncClient,
     messages: List[Dict[str, str]],
@@ -334,7 +345,7 @@ async def _call_azure(
         "api-key": api_key,
         "Content-Type": "application/json",
     }
-    payload = _build_openai_compatible_request(messages, model_name, temperature, stream=False)
+    payload = _build_azure_request(messages, model_name, stream=False)
 
     resp = await client.post(url, headers=headers, json=payload)
     if resp.status_code != 200:
@@ -360,7 +371,7 @@ async def _stream_azure(
         "api-key": api_key,
         "Content-Type": "application/json",
     }
-    payload = _build_openai_compatible_request(messages, model_name, temperature, stream=True)
+    payload = _build_azure_request(messages, model_name, stream=True)
     payload["stream_options"] = {"include_usage": True}
 
     usage = {}
