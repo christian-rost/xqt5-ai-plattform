@@ -44,7 +44,7 @@ from .token_tracking import record_usage
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="XQT5 AI Plattform API")
+app = FastAPI(title="XQT5 AI-Workplace API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,7 +60,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root() -> dict:
-    return {"status": "ok", "service": "xqt5-ai-plattform-backend"}
+    return {"status": "ok", "service": "xqt5-ai-workplace-backend"}
 
 
 @app.get("/api/health")

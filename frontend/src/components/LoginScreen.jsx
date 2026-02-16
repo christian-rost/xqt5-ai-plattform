@@ -25,7 +25,7 @@ export default function LoginScreen({ onLogin }) {
   return (
     <div className="login-screen">
       <div className="login-card">
-        <h1 className="login-logo">XQT5 AI</h1>
+        <h1 className="login-logo">XQT5 AI-Workplace</h1>
 
         <div className="login-tabs">
           <button

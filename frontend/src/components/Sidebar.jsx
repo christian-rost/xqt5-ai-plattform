@@ -20,7 +20,7 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1>XQT5 AI</h1>
+        <h1>XQT5 AI-Workplace</h1>
         <div className="user-info">
           <span className="user-name">{user?.username}</span>
           {user?.is_admin && <span className="admin-badge">Admin</span>}
