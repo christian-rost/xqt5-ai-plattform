@@ -232,7 +232,7 @@ function ModelsTab() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ model_id: '', provider: '', display_name: '', sort_order: 0 })
+  const [form, setForm] = useState({ model_id: '', provider: '', display_name: '', sort_order: 0, deployment_name: '' })
 
   useEffect(() => {
     loadModels()
@@ -284,8 +284,10 @@ function ModelsTab() {
     e.preventDefault()
     setError('')
     try {
-      await api.adminCreateModel(form)
-      setForm({ model_id: '', provider: '', display_name: '', sort_order: 0 })
+      const payload = { ...form }
+      if (!payload.deployment_name) delete payload.deployment_name
+      await api.adminCreateModel(payload)
+      setForm({ model_id: '', provider: '', display_name: '', sort_order: 0, deployment_name: '' })
       setShowForm(false)
       await loadModels()
     } catch (err) {
@@ -329,6 +331,15 @@ function ModelsTab() {
                 onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })} />
             </div>
           </div>
+          {form.provider === 'azure' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Deployment Name (Azure)</label>
+                <input className="form-input" placeholder="z.B. my-gpt5-deployment" value={form.deployment_name}
+                  onChange={(e) => setForm({ ...form, deployment_name: e.target.value })} />
+              </div>
+            </div>
+          )}
           <button className="btn btn-primary btn-small" type="submit">Hinzufügen</button>
         </form>
       )}
@@ -339,6 +350,7 @@ function ModelsTab() {
             <th>Model ID</th>
             <th>Provider</th>
             <th>Display Name</th>
+            <th>Deployment</th>
             <th>Aktiviert</th>
             <th>Default</th>
             <th>Aktionen</th>
@@ -350,6 +362,7 @@ function ModelsTab() {
               <td><code>{m.model_id}</code></td>
               <td>{m.provider}</td>
               <td>{m.display_name}</td>
+              <td>{m.deployment_name || '-'}</td>
               <td>
                 <label className="toggle-switch">
                   <input type="checkbox" checked={m.is_enabled}
@@ -379,6 +392,7 @@ function ProvidersTab() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [keyInputs, setKeyInputs] = useState({})
+  const [azureInputs, setAzureInputs] = useState({ endpoint_url: '', api_version: '' })
   const [saving, setSaving] = useState({})
   const [testing, setTesting] = useState({})
   const [testResults, setTestResults] = useState({})
@@ -391,6 +405,13 @@ function ProvidersTab() {
     try {
       const data = await api.adminListProviders()
       setProviders(data)
+      const azure = data.find((p) => p.provider === 'azure')
+      if (azure) {
+        setAzureInputs((prev) => ({
+          endpoint_url: azure.endpoint_url || prev.endpoint_url || '',
+          api_version: azure.api_version || prev.api_version || '',
+        }))
+      }
     } catch (e) {
       setError(e.message)
     } finally {
@@ -405,7 +426,11 @@ function ProvidersTab() {
     setError('')
     setTestResults((r) => ({ ...r, [provider]: null }))
     try {
-      await api.adminSetProviderKey(provider, key)
+      const extra = provider === 'azure' ? {
+        endpoint_url: azureInputs.endpoint_url.trim(),
+        api_version: azureInputs.api_version.trim(),
+      } : {}
+      await api.adminSetProviderKey(provider, key, extra)
       setKeyInputs((k) => ({ ...k, [provider]: '' }))
       await loadProviders()
     } catch (e) {
@@ -470,6 +495,29 @@ function ProvidersTab() {
                   onChange={(e) => setKeyInputs((k) => ({ ...k, [p.provider]: e.target.value }))}
                 />
               </div>
+
+              {p.provider === 'azure' && (
+                <div className="azure-extra-fields">
+                  <div className="provider-key-row">
+                    <input
+                      className="form-input"
+                      type="text"
+                      placeholder="Endpoint-URL (z.B. https://my-resource.openai.azure.com)"
+                      value={azureInputs.endpoint_url}
+                      onChange={(e) => setAzureInputs((a) => ({ ...a, endpoint_url: e.target.value }))}
+                    />
+                  </div>
+                  <div className="provider-key-row">
+                    <input
+                      className="form-input"
+                      type="text"
+                      placeholder="API-Version (z.B. 2024-12-01-preview)"
+                      value={azureInputs.api_version}
+                      onChange={(e) => setAzureInputs((a) => ({ ...a, api_version: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="provider-actions">
                 <button

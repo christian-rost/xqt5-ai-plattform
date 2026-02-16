@@ -123,6 +123,7 @@ class CreateModelConfigRequest(BaseModel):
     provider: str = Field(min_length=1)
     display_name: str = Field(min_length=1)
     sort_order: int = 0
+    deployment_name: Optional[str] = None
 
 
 class UpdateModelConfigRequest(BaseModel):
@@ -130,3 +131,4 @@ class UpdateModelConfigRequest(BaseModel):
     is_enabled: Optional[bool] = None
     is_default: Optional[bool] = None
     sort_order: Optional[int] = None
+    deployment_name: Optional[str] = None

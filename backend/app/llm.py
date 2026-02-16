@@ -5,6 +5,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 import httpx
 
 from .providers import get_api_key as _provider_get_api_key
+from .providers import get_provider_config as _get_provider_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,11 @@ PROVIDER_CONFIG = {
         "auth_header": "Authorization",
         "auth_prefix": "Bearer ",
     },
+    "azure": {
+        # Azure uses dynamic endpoint URLs; base_url is resolved at runtime
+        "auth_header": "api-key",
+        "auth_prefix": "",
+    },
 }
 
 # Available models per provider
@@ -78,12 +84,15 @@ def get_available_models() -> List[Dict[str, Any]]:
             result = []
             for row in db_result.data:
                 available = bool(_provider_get_api_key(row["provider"]))
-                result.append({
+                entry = {
                     "id": row["model_id"],
                     "provider": row["provider"],
                     "name": row["display_name"],
                     "available": available,
-                })
+                }
+                if row.get("deployment_name"):
+                    entry["deployment_name"] = row["deployment_name"]
+                result.append(entry)
             return result
     except Exception as e:
         logger.warning(f"Failed to load models from DB, using fallback: {e}")
@@ -94,6 +103,20 @@ def get_available_models() -> List[Dict[str, Any]]:
         available = bool(_provider_get_api_key(model["provider"]))
         result.append({**model, "available": available})
     return result
+
+
+def _get_deployment_name(model_id: str) -> Optional[str]:
+    """Look up the Azure deployment name for a model_id from app_model_config."""
+    try:
+        from .database import supabase
+        result = supabase.table("app_model_config").select(
+            "deployment_name"
+        ).eq("model_id", model_id).execute()
+        if result.data and result.data[0].get("deployment_name"):
+            return result.data[0]["deployment_name"]
+    except Exception as e:
+        logger.warning(f"Failed to load deployment name for {model_id}: {e}")
+    return None
 
 
 def _get_api_key(provider: str) -> str:
@@ -167,7 +190,9 @@ async def call_llm(
     api_key = _get_api_key(provider)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        if provider == "google":
+        if provider == "azure":
+            return await _call_azure(client, messages, model_name, temperature, api_key, model)
+        elif provider == "google":
             return await _call_google(client, messages, model_name, temperature, api_key)
         elif provider == "anthropic":
             return await _call_anthropic(client, messages, model_name, temperature, api_key)
@@ -269,7 +294,10 @@ async def stream_llm(
     api_key = _get_api_key(provider)
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-        if provider == "google":
+        if provider == "azure":
+            async for chunk in _stream_azure(client, messages, model_name, temperature, api_key, model):
+                yield chunk
+        elif provider == "google":
             async for chunk in _stream_google(client, messages, model_name, temperature, api_key):
                 yield chunk
         elif provider == "anthropic":
@@ -278,6 +306,87 @@ async def stream_llm(
         else:
             async for chunk in _stream_openai_compatible(client, messages, model_name, temperature, api_key, provider):
                 yield chunk
+
+
+def _build_azure_url(model_id: str, model_name: str) -> str:
+    """Build Azure OpenAI chat completions URL."""
+    cfg = _get_provider_config("azure")
+    endpoint_url = cfg.get("endpoint_url", "").rstrip("/")
+    api_version = cfg.get("api_version", "2024-12-01-preview")
+
+    if not endpoint_url:
+        raise LLMError("Azure endpoint URL is not configured")
+
+    deployment = _get_deployment_name(model_id) or model_name
+    return f"{endpoint_url}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+
+
+async def _call_azure(
+    client: httpx.AsyncClient,
+    messages: List[Dict[str, str]],
+    model_name: str,
+    temperature: float,
+    api_key: str,
+    model_id: str,
+) -> Dict[str, Any]:
+    url = _build_azure_url(model_id, model_name)
+    headers = {
+        "api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    payload = _build_openai_compatible_request(messages, model_name, temperature, stream=False)
+
+    resp = await client.post(url, headers=headers, json=payload)
+    if resp.status_code != 200:
+        raise LLMError(f"Azure API error ({resp.status_code}): {resp.text[:500]}")
+
+    data = resp.json()
+    return {
+        "content": data["choices"][0]["message"]["content"],
+        "usage": data.get("usage", {}),
+    }
+
+
+async def _stream_azure(
+    client: httpx.AsyncClient,
+    messages: List[Dict[str, str]],
+    model_name: str,
+    temperature: float,
+    api_key: str,
+    model_id: str,
+) -> AsyncIterator[Union[str, Dict]]:
+    url = _build_azure_url(model_id, model_name)
+    headers = {
+        "api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    payload = _build_openai_compatible_request(messages, model_name, temperature, stream=True)
+    payload["stream_options"] = {"include_usage": True}
+
+    usage = {}
+    async with client.stream("POST", url, headers=headers, json=payload) as resp:
+        if resp.status_code != 200:
+            body = await resp.aread()
+            raise LLMError(f"Azure API error ({resp.status_code}): {body.decode()[:500]}")
+
+        async for line in resp.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:]
+            if data_str.strip() == "[DONE]":
+                break
+            try:
+                data = json.loads(data_str)
+                if data.get("usage"):
+                    usage = data["usage"]
+                delta = data["choices"][0].get("delta", {}).get("content", "")
+                if delta:
+                    yield delta
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+
+    if usage:
+        yield {"usage": usage}
 
 
 async def _stream_openai_compatible(

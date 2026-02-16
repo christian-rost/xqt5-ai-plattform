@@ -627,6 +627,7 @@ async def admin_create_model(
         provider=request.provider,
         display_name=request.display_name,
         sort_order=request.sort_order,
+        deployment_name=request.deployment_name,
     )
     audit.log_event(
         audit.ADMIN_MODEL_CREATE,
@@ -693,7 +694,13 @@ async def admin_set_provider_key(
     api_key = body.get("api_key", "").strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key is required")
-    providers_mod.set_provider_key(provider, api_key)
+    endpoint_url = body.get("endpoint_url", "").strip() or None
+    api_version = body.get("api_version", "").strip() or None
+    providers_mod.set_provider_key(
+        provider, api_key,
+        endpoint_url=endpoint_url,
+        api_version=api_version,
+    )
     audit.log_event(
         "admin.provider.set_key",
         user_id=admin["id"],

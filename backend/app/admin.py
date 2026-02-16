@@ -116,18 +116,22 @@ def create_model_config(
     provider: str,
     display_name: str,
     sort_order: int = 0,
+    deployment_name: Optional[str] = None,
 ) -> Dict[str, Any]:
-    result = supabase.table("app_model_config").insert({
+    row: Dict[str, Any] = {
         "model_id": model_id,
         "provider": provider,
         "display_name": display_name,
         "sort_order": sort_order,
-    }).execute()
+    }
+    if deployment_name:
+        row["deployment_name"] = deployment_name
+    result = supabase.table("app_model_config").insert(row).execute()
     return result.data[0]
 
 
 def update_model_config(config_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
-    allowed = {"display_name", "is_enabled", "is_default", "sort_order"}
+    allowed = {"display_name", "is_enabled", "is_default", "sort_order", "deployment_name"}
     update_data = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not update_data:
         return None

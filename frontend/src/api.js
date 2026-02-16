@@ -328,11 +328,14 @@ export const api = {
     return response.json()
   },
 
-  async adminSetProviderKey(provider, apiKey) {
+  async adminSetProviderKey(provider, apiKey, { endpoint_url, api_version } = {}) {
+    const body = { api_key: apiKey }
+    if (endpoint_url) body.endpoint_url = endpoint_url
+    if (api_version) body.api_version = api_version
     const response = await authFetch(`${API_BASE}/api/admin/providers/${provider}/key`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: apiKey }),
+      body: JSON.stringify(body),
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
