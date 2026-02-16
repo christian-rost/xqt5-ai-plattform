@@ -21,7 +21,7 @@ PROVIDER_KEYS = {
 }
 
 AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
+AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2025-04-01-preview")
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemini-3-pro-preview")
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))

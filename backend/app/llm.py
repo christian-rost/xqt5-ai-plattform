@@ -312,7 +312,7 @@ def _build_azure_url(model_id: str, model_name: str) -> str:
     """Build Azure OpenAI chat completions URL."""
     cfg = _get_provider_config("azure")
     endpoint_url = cfg.get("endpoint_url", "").rstrip("/")
-    api_version = cfg.get("api_version", "2024-12-01-preview")
+    api_version = cfg.get("api_version", "2025-04-01-preview")
 
     if not endpoint_url:
         raise LLMError("Azure endpoint URL is not configured")

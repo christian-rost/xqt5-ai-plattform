@@ -188,7 +188,7 @@ async def _test_azure(api_key: str) -> Dict[str, Any]:
     """Test Azure OpenAI connectivity with a minimal chat request."""
     cfg = get_provider_config("azure")
     endpoint_url = cfg.get("endpoint_url", "").rstrip("/")
-    api_version = cfg.get("api_version", "2024-12-01-preview")
+    api_version = cfg.get("api_version", "2025-04-01-preview")
 
     if not endpoint_url:
         return {"success": False, "error": "Keine Endpoint-URL konfiguriert"}
