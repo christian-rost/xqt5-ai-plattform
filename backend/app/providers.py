@@ -125,7 +125,14 @@ def set_provider_key(
         "is_active": True,
     }
     if endpoint_url is not None:
-        row["endpoint_url"] = endpoint_url.strip() or None
+        # Strip path — only keep scheme + host (user may paste full Azure URL)
+        clean = endpoint_url.strip()
+        if clean:
+            from urllib.parse import urlparse
+            parsed = urlparse(clean)
+            if parsed.scheme and parsed.netloc:
+                clean = f"{parsed.scheme}://{parsed.netloc}"
+        row["endpoint_url"] = clean or None
     if api_version is not None:
         row["api_version"] = api_version.strip() or None
     result = supabase.table("app_provider_keys").upsert(
