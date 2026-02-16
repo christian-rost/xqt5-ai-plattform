@@ -193,7 +193,7 @@ async def _test_azure(api_key: str) -> Dict[str, Any]:
     if not endpoint_url:
         return {"success": False, "error": "Keine Endpoint-URL konfiguriert"}
 
-    url = f"{endpoint_url}/openai/deployments?api-version={api_version}"
+    url = f"{endpoint_url}/openai/models?api-version={api_version}"
     headers = {"api-key": api_key}
 
     try:
