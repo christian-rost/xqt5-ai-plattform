@@ -22,6 +22,9 @@ COST_PER_1M_TOKENS = {
     "mistral-large-latest": {"input": 2.00, "output": 6.00},
     # X.AI
     "grok-4": {"input": 3.00, "output": 15.00},
+    # Embeddings
+    "text-embedding-3-small": {"input": 0.02, "output": 0.00},
+    "text-embedding-3-large": {"input": 0.13, "output": 0.00},
 }
 
 

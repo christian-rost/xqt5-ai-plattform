@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
+import SourceDisplay from './SourceDisplay'
 
-export default function MessageBubble({ role, content, model, isStreaming }) {
+export default function MessageBubble({ role, content, model, isStreaming, sources }) {
   const displayContent = content || ''
 
   return (
@@ -19,6 +20,9 @@ export default function MessageBubble({ role, content, model, isStreaming }) {
         )}
         {isStreaming && <span className="streaming-cursor" />}
       </div>
+      {role === 'assistant' && sources && sources.length > 0 && (
+        <SourceDisplay sources={sources} />
+      )}
     </article>
   )
 }

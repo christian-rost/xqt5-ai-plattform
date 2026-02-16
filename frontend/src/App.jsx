@@ -30,6 +30,9 @@ export default function App() {
   const [showAssistantManager, setShowAssistantManager] = useState(false)
   const [showTemplateManager, setShowTemplateManager] = useState(false)
 
+  // Phase C Step 2: Documents / RAG
+  const [chatDocuments, setChatDocuments] = useState([])
+
   // Phase D state
   const [showAdmin, setShowAdmin] = useState(false)
 
@@ -108,6 +111,22 @@ export default function App() {
       if (activeConversation.temperature != null) setTemperature(activeConversation.temperature)
     }
   }, [activeConversation?.id])
+
+  // Load documents for active conversation
+  const loadDocuments = useCallback(async () => {
+    if (!activeConversation?.id) {
+      setChatDocuments([])
+      return
+    }
+    try {
+      const docs = await api.listDocuments(activeConversation.id, 'all')
+      setChatDocuments(docs)
+    } catch {}
+  }, [activeConversation?.id])
+
+  useEffect(() => {
+    loadDocuments()
+  }, [loadDocuments])
 
   async function handleAuth(mode, { username, email, password }) {
     if (mode === 'register') {
@@ -204,13 +223,20 @@ export default function App() {
         (delta) => {
           setStreamingContent((prev) => (prev || '') + delta)
         },
-        async (fullContent) => {
+        async (fullContent, sources) => {
           // Stream complete — finalize
           setStreamingContent(null)
           setLoading(false)
 
           // Refresh conversation to get stored messages
           const updated = await api.getConversation(activeConversation.id)
+          // Attach RAG sources to the last assistant message
+          if (sources && sources.length > 0 && updated.messages) {
+            const lastMsg = updated.messages[updated.messages.length - 1]
+            if (lastMsg && lastMsg.role === 'assistant') {
+              lastMsg.sources = sources
+            }
+          }
           setActiveConversation(updated)
           await loadConversations()
           await loadUsage()
@@ -278,6 +304,27 @@ export default function App() {
     await loadTemplates()
   }
 
+  // Document handlers
+  async function handleUploadDocument(file, chatId) {
+    setError('')
+    try {
+      await api.uploadDocument(file, chatId)
+      await loadDocuments()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function handleDeleteDocument(docId) {
+    setError('')
+    try {
+      await api.deleteDocument(docId)
+      await loadDocuments()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   if (!authChecked) {
     return (
       <div className="app-loading">
@@ -321,9 +368,12 @@ export default function App() {
           streamingContent={streamingContent}
           error={error}
           templates={templates}
+          documents={chatDocuments}
           onSend={onSendMessage}
           onModelChange={onModelChange}
           onTemperatureChange={onTemperatureChange}
+          onUpload={handleUploadDocument}
+          onDeleteDocument={handleDeleteDocument}
         />
       )}
 

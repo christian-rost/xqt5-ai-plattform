@@ -15,7 +15,7 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 5. Bereitstellung auf Coolify mit getrenntem Frontend-/Backend-Service
 
 ## Phase A: Core Chat Enhancement (umgesetzt 2026-02-15)
-1. Echte LLM-Anbindung über direkte Provider-APIs (OpenAI, Anthropic, Google, Mistral, X.AI)
+1. Echte LLM-Anbindung über direkte Provider-APIs (OpenAI, Anthropic, Google, Mistral, X.AI, Azure OpenAI)
 2. Eigene Chat-Tabellen (`chats`, `chat_messages`) — getrennt von llm-council
 3. SSE-Streaming mit Coolify-kompatiblen Headers
 4. Modellauswahl (Dropdown) und Temperatur-Steuerung (Slider)
@@ -48,13 +48,19 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 
 ## Phase D: Enterprise (teilweise umgesetzt 2026-02-16)
 ### Admin-Dashboard + Audit-Logs (umgesetzt)
-1. Admin-Dashboard mit Tab-Navigation (Benutzer, Kosten, Statistiken, Modelle, Audit-Logs)
+1. Admin-Dashboard mit Tab-Navigation (Benutzer, Kosten, Statistiken, Modelle, Audit-Logs, Provider)
 2. Benutzer-Verwaltung: Active/Admin-Toggle mit Selbstschutz
 3. Kosten-Dashboard: Globale Totals + Per-User Aufschlüsselung
 4. System-Statistiken: Users, Chats, Messages, Assistenten, Templates
 5. Modell-Konfiguration via DB (app_model_config) statt hardcoded — Enable/Disable, Default
 6. Audit-Logs: Auth-, Admin-, Chat-Events mit fire-and-forget Logging
 7. Paginierte Audit-Log-Anzeige mit Aktions-Filter
+### Provider-Key-Verwaltung + Azure OpenAI (umgesetzt)
+1. DB-verwaltete Provider API-Keys (Fernet-verschlüsselt) mit Env-Fallback
+2. Admin-UI: Provider-Keys Tab mit Save/Delete/Test pro Provider
+3. Azure OpenAI als LLM-Provider (Deployment-Name Lookup, GPT-5.x Handling)
+4. Azure-spezifische Konfiguration (Endpoint-URL, API-Version) in DB und UI
+5. Deployment-Name Spalte in Modell-Konfiguration für Azure-Modelle
 ### Noch geplant
 1. Workflow-Engine für automatisierte Abläufe
 2. SSO (OIDC/SAML)

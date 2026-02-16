@@ -1490,6 +1490,145 @@ body {
   color: var(--color-text-muted);
 }
 
+/* ── File Upload ── */
+
+.file-upload {
+  display: flex;
+  align-items: center;
+}
+
+.upload-btn {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-white);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+
+.upload-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: #fff8f0;
+}
+
+.upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Document List (tags under input) ── */
+
+.document-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.document-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #e8f4fd;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+.document-item.doc-status-processing {
+  background: #fff3cd;
+  color: #856404;
+  border-color: #ffeaa7;
+}
+
+.document-item.doc-status-error {
+  background: #f8d7da;
+  color: #721c24;
+  border-color: #f5c6cb;
+}
+
+.doc-icon {
+  font-size: 13px;
+}
+
+.doc-name {
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-chunks {
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.doc-processing {
+  font-size: 10px;
+  animation: blink 0.8s infinite;
+}
+
+.doc-error-icon {
+  color: #dc3545;
+  font-weight: 700;
+}
+
+.doc-delete {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.5;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.doc-delete:hover {
+  opacity: 1;
+  color: #dc3545;
+}
+
+/* ── RAG Sources (under assistant messages) ── */
+
+.rag-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.rag-sources-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.source-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: #e8f4fd;
+  color: #0c5460;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid #bee5eb;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 900px) {

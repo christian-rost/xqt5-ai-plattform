@@ -12,9 +12,12 @@ export default function ChatArea({
   streamingContent,
   error,
   templates,
+  documents,
   onSend,
   onModelChange,
   onTemperatureChange,
+  onUpload,
+  onDeleteDocument,
 }) {
   const messagesEndRef = useRef(null)
 
@@ -42,6 +45,7 @@ export default function ChatArea({
             role={m.role}
             content={m.content || ''}
             model={m.model}
+            sources={m.sources}
           />
         ))}
 
@@ -62,9 +66,13 @@ export default function ChatArea({
         temperature={temperature}
         loading={loading}
         templates={templates}
+        chatId={conversation?.id}
+        documents={documents}
         onSend={onSend}
         onModelChange={onModelChange}
         onTemperatureChange={onTemperatureChange}
+        onUpload={onUpload}
+        onDeleteDocument={onDeleteDocument}
       />
     </main>
   )

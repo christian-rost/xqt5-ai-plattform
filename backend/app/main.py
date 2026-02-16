@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -18,7 +18,7 @@ from .auth import (
     get_user_by_id,
     register_user,
 )
-from .config import CORS_ORIGINS_LIST, DEFAULT_MODEL, DEFAULT_TEMPERATURE
+from .config import CORS_ORIGINS_LIST, DEFAULT_MODEL, DEFAULT_TEMPERATURE, MAX_UPLOAD_SIZE_MB
 from .llm import call_llm, get_available_models, LLMError, parse_model_string, stream_llm
 from .models import (
     CreateAssistantRequest,
@@ -38,7 +38,9 @@ from .models import (
 from . import admin as admin_crud
 from . import assistants as assistants_crud
 from . import audit
+from . import documents as documents_mod
 from . import providers as providers_mod
+from . import rag as rag_mod
 from . import storage
 from . import templates as templates_crud
 from .token_tracking import record_usage
@@ -306,11 +308,35 @@ async def send_message(
     llm_messages = _build_llm_messages(conversation.get("messages", []), system_prompt=system_prompt)
     llm_messages.append({"role": "user", "content": request.content})
 
+    # RAG: inject relevant document context
+    rag_sources = []
+    try:
+        if documents_mod.has_ready_documents(current_user["id"], conversation_id):
+            chunks = await rag_mod.search_similar_chunks(
+                query=request.content,
+                user_id=current_user["id"],
+                chat_id=conversation_id,
+            )
+            if chunks:
+                rag_context = rag_mod.build_rag_context(chunks)
+                rag_sources = [
+                    {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
+                    for c in chunks
+                ]
+                # Inject as system message (or append to existing system prompt)
+                if llm_messages and llm_messages[0]["role"] == "system":
+                    llm_messages[0]["content"] += "\n\n" + rag_context
+                else:
+                    llm_messages.insert(0, {"role": "system", "content": rag_context})
+    except Exception as e:
+        logger.warning(f"RAG injection failed: {e}")
+
     if request.stream:
         return StreamingResponse(
             _stream_response(
                 conversation_id, llm_messages, model, temperature,
                 is_first_message, request.content, current_user["id"],
+                rag_sources=rag_sources,
             ),
             media_type="text/event-stream",
             headers={
@@ -358,6 +384,8 @@ async def send_message(
     updated = storage.get_conversation(conversation_id)
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to load updated conversation")
+    if rag_sources:
+        updated["rag_sources"] = rag_sources
     return updated
 
 
@@ -369,6 +397,7 @@ async def _stream_response(
     is_first_message: bool,
     user_content: str,
     user_id: str,
+    rag_sources: Optional[List[Dict]] = None,
 ):
     full_content = ""
     usage = {}
@@ -405,7 +434,10 @@ async def _stream_response(
             metadata={"model": model},
         )
 
-        yield f"data: {json.dumps({'done': True, 'content': full_content})}\n\n"
+        done_data = {'done': True, 'content': full_content}
+        if rag_sources:
+            done_data['sources'] = rag_sources
+        yield f"data: {json.dumps(done_data)}\n\n"
 
         # Auto-name in background after stream completes
         if is_first_message:
@@ -552,6 +584,111 @@ async def delete_template(
     if not deleted:
         raise HTTPException(status_code=404, detail="Template not found or no permission")
     return {"deleted": True}
+
+
+# ── Document / RAG Endpoints ──
+
+
+@app.post("/api/documents/upload", response_model=None)
+async def upload_document(
+    file: UploadFile = File(...),
+    chat_id: Optional[str] = Form(None),
+    current_user: Dict = Depends(get_current_user),
+):
+    # Validate file type
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    lower = file.filename.lower()
+    if not (lower.endswith(".pdf") or lower.endswith(".txt")):
+        raise HTTPException(status_code=400, detail="Only PDF and TXT files are supported")
+
+    # Read and validate size
+    file_bytes = await file.read()
+    max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File exceeds {MAX_UPLOAD_SIZE_MB}MB limit")
+
+    # Verify chat ownership if chat_id provided
+    if chat_id:
+        if not storage.verify_conversation_owner(chat_id, current_user["id"]):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Extract text
+    try:
+        extracted_text = documents_mod.extract_text(file.filename, file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
+
+    if not extracted_text.strip():
+        raise HTTPException(status_code=422, detail="No text could be extracted from file")
+
+    file_type = "pdf" if lower.endswith(".pdf") else "txt"
+
+    # Create document record
+    doc = documents_mod.create_document(
+        user_id=current_user["id"],
+        chat_id=chat_id,
+        filename=file.filename,
+        file_type=file_type,
+        file_size_bytes=len(file_bytes),
+        extracted_text=extracted_text,
+    )
+
+    # Process: chunk + embed (async but awaited)
+    try:
+        chunk_count, tokens_used = await rag_mod.process_document(
+            doc["id"], extracted_text, current_user["id"],
+        )
+        doc["chunk_count"] = chunk_count
+        doc["status"] = "ready"
+    except Exception as e:
+        logger.error(f"RAG processing failed for {doc['id']}: {e}")
+        doc["status"] = "error"
+        doc["error_message"] = str(e)
+
+    return doc
+
+
+@app.get("/api/documents", response_model=None)
+async def list_documents(
+    chat_id: Optional[str] = None,
+    scope: str = "all",
+    current_user: Dict = Depends(get_current_user),
+):
+    return documents_mod.list_documents(
+        user_id=current_user["id"],
+        chat_id=chat_id,
+        scope=scope,
+    )
+
+
+@app.delete("/api/documents/{document_id}", response_model=None)
+async def delete_document(
+    document_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    deleted = documents_mod.delete_document(document_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"deleted": True}
+
+
+@app.post("/api/rag/search", response_model=None)
+async def rag_search(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    body = await request.json()
+    query = body.get("query", "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    chat_id = body.get("chat_id")
+    chunks = await rag_mod.search_similar_chunks(
+        query=query,
+        user_id=current_user["id"],
+        chat_id=chat_id,
+    )
+    return {"chunks": chunks}
 
 
 # ── Usage Endpoint ──

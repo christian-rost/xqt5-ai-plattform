@@ -24,9 +24,12 @@
 
 ### Phase A: Core Chat Enhancement (2026-02-15)
 1. **LLM Provider Modul** (`backend/app/llm.py`):
-   - Multi-Provider Support: OpenAI, Anthropic, Google Gemini, Mistral, X.AI
+   - Multi-Provider Support: OpenAI, Anthropic, Google Gemini, Mistral, X.AI, Azure OpenAI
    - Streaming (SSE) und Non-Streaming Calls via `httpx.AsyncClient`
    - Anthropic-Sonderbehandlung (anderes Request-Format)
+   - Azure OpenAI Sonderbehandlung: eigene URL/Request/Call/Stream-Funktionen
+   - GPT-5.x: kein Temperature-Parameter, `max_completion_tokens` statt `max_tokens`
+   - Azure Auth via `api-key` Header, Deployment-Name Lookup aus `app_model_config`
    - `LLMError` Exception-Klasse für einheitliche Fehlerbehandlung
 2. **Eigene Chat-Tabellen** (getrennt von llm-council):
    - `chats` (id, user_id, title, model, temperature, created_at)
@@ -57,7 +60,8 @@
 | `chat_token_usage` | XQT5 AI Plattform | Token-Verbrauch + Kosten pro Anfrage |
 | `assistants` | XQT5 AI Plattform | KI-Assistenten mit System-Prompts |
 | `prompt_templates` | XQT5 AI Plattform | Prompt-Templates mit Platzhaltern |
-| `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste |
+| `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste (+ deployment_name für Azure) |
+| `app_provider_keys` | XQT5 AI Plattform | Verschlüsselte Provider-API-Keys + Azure-Config |
 | `app_audit_logs` | XQT5 AI Plattform | Audit-Log-Einträge |
 | `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
 | `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
@@ -74,6 +78,7 @@
    - Domain: `api.xqtfive.com`
    - Env: `SUPABASE_URL`, `SUPABASE_KEY`, `JWT_SECRET`, `CORS_ORIGINS`
    - Provider Keys: `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.
+   - Azure: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_API_VERSION` (default: 2025-04-01-preview)
    - Defaults: `DEFAULT_MODEL`, `DEFAULT_TEMPERATURE`
 3. Frontend-Service erstellen:
    - Build Context: `frontend`, Dockerfile: `frontend/Dockerfile`
@@ -170,7 +175,7 @@
    - Admin: user toggles, model config CRUD
    - Chat: conversation create/delete, message send (nur Metadaten, kein Inhalt)
 7. **Frontend**:
-   - `AdminDashboard.jsx`: Tab-basierte Navigation (Benutzer, Kosten, Statistiken, Modelle, Audit-Logs)
+   - `AdminDashboard.jsx`: Tab-basierte Navigation (Benutzer, Kosten, Statistiken, Modelle, Audit-Logs, Provider)
    - Benutzer-Tab: Tabelle mit Active/Admin Toggle-Switches
    - Kosten-Tab: Globale Totals (Cards) + Per-User-Tabelle sortiert nach Kosten
    - Statistiken-Tab: Card-Grid (6 Metriken)
@@ -182,6 +187,38 @@
    - `styles.css`: Admin-Dashboard, Tabs, Cards, Table, Toggle-Switches
 8. **Pydantic-Models** (`backend/app/models.py`):
    - `UpdateUserRequest`, `CreateModelConfigRequest`, `UpdateModelConfigRequest`
+
+### Phase D Erweiterung: Provider-Key-Verwaltung + Azure OpenAI (2026-02-16)
+1. **Datenbank-Migrationen**:
+   - `supabase/migrations/20260216_phase_d_provider_keys.sql`: `app_provider_keys` Tabelle (provider, api_key_encrypted, extra_config, created_at, updated_at)
+   - `supabase/migrations/20260216_phase_d_azure_provider.sql`: `deployment_name` Spalte in `app_model_config`
+2. **Encryption-Modul** (`backend/app/encryption.py`):
+   - Fernet-Verschlüsselung mit von `JWT_SECRET` abgeleitetem Key (PBKDF2)
+   - `encrypt_value()` / `decrypt_value()` Funktionen
+3. **Provider-Modul** (`backend/app/providers.py`):
+   - `get_provider_key()`: DB-Lookup mit Fallback auf Env-Variable
+   - `set_provider_key()`: Verschlüsseltes Speichern in DB
+   - `delete_provider_key()`: Entfernen aus DB
+   - `get_provider_config()`: Gesamte Provider-Konfiguration (Key + Extra-Config)
+   - `test_provider_key()`: Live-Test gegen Provider-API
+4. **Admin API-Endpoints** (alle `Depends(get_current_admin)`):
+   - `GET /api/admin/providers` — Alle Provider mit Key-Status (masked)
+   - `PUT /api/admin/providers/{provider}/key` — Key speichern/aktualisieren
+   - `DELETE /api/admin/providers/{provider}/key` — Key löschen
+   - `POST /api/admin/providers/{provider}/test` — Provider-Verbindung testen
+5. **LLM-Modul Azure-Erweiterungen** (`backend/app/llm.py`):
+   - `_azure_url()`: Endpoint-URL-Konstruktion mit Deployment-Name
+   - `_azure_headers()`: `api-key` Header statt Bearer Token
+   - `_azure_request_body()`: GPT-5.x Handling (kein Temperature, `max_completion_tokens`)
+   - `_call_azure()` / `_stream_azure()`: Eigene Call/Stream-Funktionen
+   - Auto-Strip von Pfad-Komponenten aus Azure Endpoint-URL
+6. **Config** (`backend/app/config.py`):
+   - Neue Env-Vars: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_API_VERSION`
+7. **Frontend**:
+   - Provider-Keys Tab in `AdminDashboard.jsx` mit Save/Delete/Test pro Provider
+   - Azure-spezifische Felder (Endpoint-URL, API-Version) im Provider-Tab
+   - Deployment-Name Feld in Modell-Konfiguration
+   - `api.js`: 4 neue Admin-API-Methoden (GET/PUT/DELETE/POST Provider)
 
 ## Nächste Umsetzungsschritte
 1. **Phase C Schritt 2**: Datei-Upload, RAG-Pipeline (pgvector, Embeddings, Vektor-Suche)

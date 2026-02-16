@@ -2,6 +2,8 @@ import { useState } from 'react'
 import ModelSelector from './ModelSelector'
 import TemperatureSlider from './TemperatureSlider'
 import TemplatePicker from './TemplatePicker'
+import FileUpload from './FileUpload'
+import DocumentList from './DocumentList'
 
 export default function MessageInput({
   models,
@@ -9,9 +11,13 @@ export default function MessageInput({
   temperature,
   loading,
   templates,
+  chatId,
+  documents,
   onSend,
   onModelChange,
   onTemperatureChange,
+  onUpload,
+  onDeleteDocument,
 }) {
   const [message, setMessage] = useState('')
 
@@ -51,6 +57,9 @@ export default function MessageInput({
         />
       </div>
       <div className="input-row">
+        {chatId && onUpload && (
+          <FileUpload chatId={chatId} onUploadComplete={onUpload} disabled={loading} />
+        )}
         <textarea
           className="message-input"
           value={message}
@@ -67,6 +76,7 @@ export default function MessageInput({
           {loading ? 'Sending...' : 'Send'}
         </button>
       </div>
+      <DocumentList documents={documents} onDelete={onDeleteDocument} />
     </form>
   )
 }

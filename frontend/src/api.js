@@ -369,6 +369,38 @@ export const api = {
     return response.json()
   },
 
+  // Documents / RAG
+  async uploadDocument(file, chatId = null) {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (chatId) formData.append('chat_id', chatId)
+    const response = await authFetch(`${API_BASE}/api/documents/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Upload fehlgeschlagen')
+    }
+    return response.json()
+  },
+
+  async listDocuments(chatId = null, scope = 'all') {
+    let url = `${API_BASE}/api/documents?scope=${scope}`
+    if (chatId) url += `&chat_id=${chatId}`
+    const response = await authFetch(url)
+    if (!response.ok) throw new Error('Konnte Dokumente nicht laden')
+    return response.json()
+  },
+
+  async deleteDocument(docId) {
+    const response = await authFetch(`${API_BASE}/api/documents/${docId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Dokument nicht löschen')
+    return response.json()
+  },
+
   async sendMessageStream(id, content, model, temperature, onDelta, onDone, onError) {
     const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',
@@ -405,7 +437,7 @@ export const api = {
             onDelta(data.delta)
           }
           if (data.done) {
-            await onDone(data.content)
+            await onDone(data.content, data.sources || [])
             return
           }
         } catch {
