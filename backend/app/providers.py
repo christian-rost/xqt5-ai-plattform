@@ -185,7 +185,7 @@ async def test_provider(provider: str) -> Dict[str, Any]:
 
 
 async def _test_azure(api_key: str) -> Dict[str, Any]:
-    """Test Azure OpenAI connectivity by listing deployments."""
+    """Test Azure OpenAI connectivity with a minimal chat request."""
     cfg = get_provider_config("azure")
     endpoint_url = cfg.get("endpoint_url", "").rstrip("/")
     api_version = cfg.get("api_version", "2024-12-01-preview")
@@ -193,19 +193,46 @@ async def _test_azure(api_key: str) -> Dict[str, Any]:
     if not endpoint_url:
         return {"success": False, "error": "Keine Endpoint-URL konfiguriert"}
 
-    url = f"{endpoint_url}/openai/models?api-version={api_version}"
-    headers = {"api-key": api_key}
+    # Find an Azure deployment name from model config to test with
+    deployment = None
+    try:
+        from .database import supabase as _sb
+        result = _sb.table("app_model_config").select(
+            "deployment_name"
+        ).eq("provider", "azure").limit(1).execute()
+        if result.data and result.data[0].get("deployment_name"):
+            deployment = result.data[0]["deployment_name"]
+    except Exception:
+        pass
+
+    if not deployment:
+        # No deployment configured yet — just verify endpoint is reachable
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(endpoint_url, headers={"api-key": api_key})
+                # Any response from Azure = endpoint reachable
+                return {"success": True, "message": "Endpoint erreichbar (kein Deployment zum Testen konfiguriert)"}
+        except httpx.TimeoutException:
+            return {"success": False, "error": "Timeout bei der Verbindung"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # Test with actual deployment
+    url = f"{endpoint_url}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+    headers = {"api-key": api_key, "Content-Type": "application/json"}
+    payload = {"messages": [{"role": "user", "content": "Hi"}], "max_tokens": 1}
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url, headers=headers)
+            resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 200:
                 return {"success": True, "message": "Verbindung erfolgreich"}
+            elif resp.status_code == 401:
+                return {"success": False, "error": "Ungültiger API-Key"}
+            elif resp.status_code == 404:
+                return {"success": False, "error": f"Deployment '{deployment}' nicht gefunden"}
             else:
-                return {
-                    "success": False,
-                    "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
-                }
+                return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
     except httpx.TimeoutException:
         return {"success": False, "error": "Timeout bei der Verbindung"}
     except Exception as e:
