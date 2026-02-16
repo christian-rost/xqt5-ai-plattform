@@ -52,9 +52,11 @@
 | Tabelle | Zugehörigkeit | Beschreibung |
 |---------|---------------|--------------|
 | `app_users` | XQT5 AI Plattform | Eigene Benutzer mit is_admin Flag |
-| `chats` | XQT5 AI Plattform | Chat-Konversationen mit model/temperature |
+| `chats` | XQT5 AI Plattform | Chat-Konversationen mit model/temperature/assistant_id |
 | `chat_messages` | XQT5 AI Plattform | Chat-Nachrichten (clean, ohne Pipeline-Felder) |
 | `chat_token_usage` | XQT5 AI Plattform | Token-Verbrauch + Kosten pro Anfrage |
+| `assistants` | XQT5 AI Plattform | KI-Assistenten mit System-Prompts |
+| `prompt_templates` | XQT5 AI Plattform | Prompt-Templates mit Platzhaltern |
 | `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
 | `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
 | `messages` | llm-council | Pipeline-Nachrichten (stage1/2/3, metadata) |
@@ -106,8 +108,39 @@
    - Usage-Widget in Sidebar (`UsageWidget.jsx`)
    - Auth-State in `App.jsx` (Loading → Login → App)
 
+### Phase C Schritt 1: KI-Assistenten + Prompt-Templates (2026-02-16)
+1. **Datenbank-Migration** (`supabase/migrations/20260216_phase_c_assistants_templates.sql`):
+   - `assistants` Tabelle (user_id, name, description, system_prompt, model, temperature, is_global, icon)
+   - `prompt_templates` Tabelle (user_id, name, description, content, category, is_global)
+   - `chats.assistant_id` FK auf `assistants`
+2. **Backend CRUD-Module**:
+   - `backend/app/assistants.py`: Erstellen, Auflisten (eigene + globale), Lesen, Updaten, Löschen
+   - `backend/app/templates.py`: Analog für Prompt-Templates
+   - Ownership-/Admin-Checks für globale Einträge
+3. **API-Endpoints**:
+   - `GET/POST /api/assistants`, `GET/PATCH/DELETE /api/assistants/{id}`
+   - `GET/POST /api/templates`, `GET/PATCH/DELETE /api/templates/{id}`
+   - `is_global=true` nur für Admins
+4. **System-Prompt Injection**:
+   - Wenn Chat `assistant_id` hat → Assistant laden → `system_prompt` als erste Message in LLM-Kontext
+   - Model/Temperature-Override vom Assistant (nachrangig zu Message- und Conversation-Level)
+   - `CreateConversationRequest` erweitert um `assistant_id`
+5. **Frontend-Komponenten**:
+   - `AssistantSelector.jsx`: Icon-Grid in Sidebar, Klick erstellt neuen Chat mit Assistent
+   - `AssistantManager.jsx`: Modal für CRUD (Name, Icon, Beschreibung, System-Prompt, Model/Temp)
+   - `TemplateManager.jsx`: Modal für CRUD (Name, Beschreibung, Kategorie, Inhalt)
+   - `TemplatePicker.jsx`: Dropdown in MessageInput, fügt Template-Text in Textarea ein
+6. **Geänderte Dateien**:
+   - `App.jsx`: Assistants/Templates State, CRUD-Handler, Manager-Modals
+   - `Sidebar.jsx`: AssistantSelector, Buttons für Assistenten/Templates verwalten
+   - `ChatArea.jsx`: Templates-Prop an MessageInput durchreichen
+   - `MessageInput.jsx`: TemplatePicker neben Model-Selector
+   - `api.js`: 8 neue API-Methoden (CRUD für Assistenten + Templates)
+   - `storage.py`: `assistant_id` in create/get_conversation
+   - `models.py`: 4 neue Request-Models
+
 ## Nächste Umsetzungsschritte
-1. **Phase C**: Datei-Upload, RAG-Pipeline, KI-Assistenten, Prompt-Templates
+1. **Phase C Schritt 2**: Datei-Upload, RAG-Pipeline (pgvector, Embeddings, Vektor-Suche)
 2. **Phase D**: Admin-Dashboard, Workflow-Engine, Audit-Logs, SSO
 3. RLS und Mandantenmodell in Supabase aktivieren
 4. Integrationstests für API und End-to-End-Chat

@@ -11,6 +11,7 @@ export default function ChatArea({
   loading,
   streamingContent,
   error,
+  templates,
   onSend,
   onModelChange,
   onTemperatureChange,
@@ -60,6 +61,7 @@ export default function ChatArea({
         selectedModel={selectedModel}
         temperature={temperature}
         loading={loading}
+        templates={templates}
         onSend={onSend}
         onModelChange={onModelChange}
         onTemperatureChange={onTemperatureChange}

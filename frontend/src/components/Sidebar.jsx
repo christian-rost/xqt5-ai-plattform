@@ -1,4 +1,5 @@
 import UsageWidget from './UsageWidget'
+import AssistantSelector from './AssistantSelector'
 
 export default function Sidebar({
   user,
@@ -6,8 +7,12 @@ export default function Sidebar({
   conversations,
   activeId,
   loading,
+  assistants,
   onCreateConversation,
   onOpenConversation,
+  onSelectAssistant,
+  onManageAssistants,
+  onManageTemplates,
   onLogout,
 }) {
   return (
@@ -28,6 +33,8 @@ export default function Sidebar({
         New Conversation
       </button>
 
+      <AssistantSelector assistants={assistants} onSelect={onSelectAssistant} />
+
       <div className="conversation-list">
         {conversations.length === 0 ? (
           <div className="no-conversations">No conversations yet</div>
@@ -46,6 +53,10 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
+        <div className="sidebar-actions">
+          <button className="sidebar-action-btn" onClick={onManageAssistants}>Assistenten</button>
+          <button className="sidebar-action-btn" onClick={onManageTemplates}>Templates</button>
+        </div>
         <UsageWidget usage={usage} />
         <button className="logout-btn" onClick={onLogout}>Logout</button>
       </div>

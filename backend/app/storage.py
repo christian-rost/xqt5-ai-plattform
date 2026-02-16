@@ -8,6 +8,7 @@ def create_conversation(
     user_id: Optional[str] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
+    assistant_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
@@ -18,6 +19,8 @@ def create_conversation(
         payload["model"] = model
     if temperature is not None:
         payload["temperature"] = temperature
+    if assistant_id is not None:
+        payload["assistant_id"] = assistant_id
 
     result = supabase.table("chats").insert(payload).execute()
     row = result.data[0]
@@ -27,6 +30,7 @@ def create_conversation(
         "title": row["title"],
         "model": row.get("model"),
         "temperature": float(row["temperature"]) if row.get("temperature") is not None else None,
+        "assistant_id": row.get("assistant_id"),
         "messages": [],
     }
 
@@ -79,6 +83,7 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
         "title": conv["title"],
         "model": conv.get("model"),
         "temperature": float(conv["temperature"]) if conv.get("temperature") is not None else None,
+        "assistant_id": conv.get("assistant_id"),
         "messages": messages,
     }
 

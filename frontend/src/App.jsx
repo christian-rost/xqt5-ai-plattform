@@ -3,6 +3,8 @@ import { api } from './api'
 import LoginScreen from './components/LoginScreen'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
+import AssistantManager from './components/AssistantManager'
+import TemplateManager from './components/TemplateManager'
 
 const DEFAULT_MODEL = 'google/gemini-3-pro-preview'
 const DEFAULT_TEMPERATURE = 0.7
@@ -20,6 +22,12 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState(null)
   const [error, setError] = useState('')
+
+  // Phase C state
+  const [assistants, setAssistants] = useState([])
+  const [templates, setTemplates] = useState([])
+  const [showAssistantManager, setShowAssistantManager] = useState(false)
+  const [showTemplateManager, setShowTemplateManager] = useState(false)
 
   // Check auth on mount
   useEffect(() => {
@@ -65,6 +73,30 @@ export default function App() {
     if (user) loadConversations()
   }, [user, loadConversations])
 
+  // Load assistants and templates
+  const loadAssistants = useCallback(async () => {
+    if (!user) return
+    try {
+      const data = await api.listAssistants()
+      setAssistants(data)
+    } catch {}
+  }, [user])
+
+  const loadTemplates = useCallback(async () => {
+    if (!user) return
+    try {
+      const data = await api.listTemplates()
+      setTemplates(data)
+    } catch {}
+  }, [user])
+
+  useEffect(() => {
+    if (user) {
+      loadAssistants()
+      loadTemplates()
+    }
+  }, [user, loadAssistants, loadTemplates])
+
   // Sync model/temperature when conversation changes
   useEffect(() => {
     if (activeConversation) {
@@ -89,13 +121,15 @@ export default function App() {
     setConversations([])
     setActiveConversation(null)
     setUsage(null)
+    setAssistants([])
+    setTemplates([])
   }
 
-  async function onCreateConversation() {
+  async function onCreateConversation(assistantId = null) {
     setLoading(true)
     setError('')
     try {
-      const created = await api.createConversation('New Conversation')
+      const created = await api.createConversation('New Conversation', assistantId)
       setConversations((prev) => [
         {
           id: created.id,
@@ -111,6 +145,10 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function onSelectAssistant(assistant) {
+    await onCreateConversation(assistant.id)
   }
 
   async function onOpenConversation(id) {
@@ -191,6 +229,38 @@ export default function App() {
     }
   }
 
+  // Assistant CRUD handlers
+  async function handleCreateAssistant(data) {
+    await api.createAssistant(data)
+    await loadAssistants()
+  }
+
+  async function handleUpdateAssistant(id, data) {
+    await api.updateAssistant(id, data)
+    await loadAssistants()
+  }
+
+  async function handleDeleteAssistant(id) {
+    await api.deleteAssistant(id)
+    await loadAssistants()
+  }
+
+  // Template CRUD handlers
+  async function handleCreateTemplate(data) {
+    await api.createTemplate(data)
+    await loadTemplates()
+  }
+
+  async function handleUpdateTemplate(id, data) {
+    await api.updateTemplate(id, data)
+    await loadTemplates()
+  }
+
+  async function handleDeleteTemplate(id) {
+    await api.deleteTemplate(id)
+    await loadTemplates()
+  }
+
   if (!authChecked) {
     return (
       <div className="app-loading">
@@ -211,8 +281,12 @@ export default function App() {
         conversations={conversations}
         activeId={activeConversation?.id}
         loading={loading}
-        onCreateConversation={onCreateConversation}
+        assistants={assistants}
+        onCreateConversation={() => onCreateConversation()}
         onOpenConversation={onOpenConversation}
+        onSelectAssistant={onSelectAssistant}
+        onManageAssistants={() => setShowAssistantManager(true)}
+        onManageTemplates={() => setShowTemplateManager(true)}
         onLogout={handleLogout}
       />
       <ChatArea
@@ -223,10 +297,33 @@ export default function App() {
         loading={loading}
         streamingContent={streamingContent}
         error={error}
+        templates={templates}
         onSend={onSendMessage}
         onModelChange={onModelChange}
         onTemperatureChange={onTemperatureChange}
       />
+
+      {showAssistantManager && (
+        <AssistantManager
+          assistants={assistants}
+          isAdmin={user?.is_admin}
+          onClose={() => setShowAssistantManager(false)}
+          onCreate={handleCreateAssistant}
+          onUpdate={handleUpdateAssistant}
+          onDelete={handleDeleteAssistant}
+        />
+      )}
+
+      {showTemplateManager && (
+        <TemplateManager
+          templates={templates}
+          isAdmin={user?.is_admin}
+          onClose={() => setShowTemplateManager(false)}
+          onCreate={handleCreateTemplate}
+          onUpdate={handleUpdateTemplate}
+          onDelete={handleDeleteTemplate}
+        />
+      )}
     </div>
   )
 }

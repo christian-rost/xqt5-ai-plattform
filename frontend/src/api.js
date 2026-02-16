@@ -124,11 +124,13 @@ export const api = {
     return response.json()
   },
 
-  async createConversation(title = 'New Conversation') {
+  async createConversation(title = 'New Conversation', assistantId = null) {
+    const payload = { title }
+    if (assistantId) payload.assistant_id = assistantId
     const response = await authFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify(payload),
     })
     if (!response.ok) throw new Error('Konnte Konversation nicht erstellen')
     return response.json()
@@ -163,6 +165,82 @@ export const api = {
       body: JSON.stringify({ content, model, temperature, stream: false }),
     })
     if (!response.ok) throw new Error('Konnte Nachricht nicht senden')
+    return response.json()
+  },
+
+  // Assistants
+  async listAssistants() {
+    const response = await authFetch(`${API_BASE}/api/assistants`)
+    if (!response.ok) throw new Error('Konnte Assistenten nicht laden')
+    return response.json()
+  },
+
+  async createAssistant(data) {
+    const response = await authFetch(`${API_BASE}/api/assistants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Assistenten nicht erstellen')
+    }
+    return response.json()
+  },
+
+  async updateAssistant(id, data) {
+    const response = await authFetch(`${API_BASE}/api/assistants/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Konnte Assistenten nicht aktualisieren')
+    return response.json()
+  },
+
+  async deleteAssistant(id) {
+    const response = await authFetch(`${API_BASE}/api/assistants/${id}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Assistenten nicht löschen')
+    return response.json()
+  },
+
+  // Templates
+  async listTemplates() {
+    const response = await authFetch(`${API_BASE}/api/templates`)
+    if (!response.ok) throw new Error('Konnte Templates nicht laden')
+    return response.json()
+  },
+
+  async createTemplate(data) {
+    const response = await authFetch(`${API_BASE}/api/templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Template nicht erstellen')
+    }
+    return response.json()
+  },
+
+  async updateTemplate(id, data) {
+    const response = await authFetch(`${API_BASE}/api/templates/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Konnte Template nicht aktualisieren')
+    return response.json()
+  },
+
+  async deleteTemplate(id) {
+    const response = await authFetch(`${API_BASE}/api/templates/${id}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Template nicht löschen')
     return response.json()
   },
 

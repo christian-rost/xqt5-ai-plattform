@@ -32,11 +32,19 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 6. Login-/Register-Screen im Frontend
 7. Einfaches Admin vs. Normaluser (Gruppen auf Phase D verschoben)
 
-## Phase C: Wissen & Assistenten (geplant)
+## Phase C: Wissen & Assistenten (Schritt 1 umgesetzt 2026-02-16)
+### Schritt 1: KI-Assistenten + Prompt-Templates (umgesetzt)
+1. Konfigurierbare KI-Assistenten (System-Prompts, Modell/Temperature-Override, Icons)
+2. Globale Assistenten (nur Admins) + persönliche Assistenten
+3. System-Prompt Injection bei Chat mit Assistent
+4. Prompt-Templates mit Platzhalter-Syntax ({{variable}})
+5. Template-Picker in Message-Input
+6. Assistenten-Selector in Sidebar + Manager-Modal
+7. Template-Manager-Modal
+### Schritt 2: File Upload + RAG-Pipeline (geplant)
 1. Datei-Upload (PDF, DOCX, TXT)
-2. RAG-Pipeline: Chunking, Embeddings, Vektor-Suche
-3. Konfigurierbare KI-Assistenten (System-Prompts, Modell-Präferenzen)
-4. Prompt-Templates
+2. RAG-Pipeline: Chunking, Embeddings (pgvector), Vektor-Suche
+3. Kontext-Injection bei Nachrichten
 
 ## Phase D: Enterprise (geplant)
 1. Workflow-Engine für automatisierte Abläufe

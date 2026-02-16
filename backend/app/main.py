@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,14 +20,20 @@ from .auth import (
 from .config import CORS_ORIGINS_LIST, DEFAULT_MODEL, DEFAULT_TEMPERATURE
 from .llm import call_llm, get_available_models, LLMError, parse_model_string, stream_llm
 from .models import (
+    CreateAssistantRequest,
     CreateConversationRequest,
+    CreateTemplateRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
     SendMessageRequest,
+    UpdateAssistantRequest,
     UpdateConversationRequest,
+    UpdateTemplateRequest,
 )
+from . import assistants as assistants_crud
 from . import storage
+from . import templates as templates_crud
 from .token_tracking import record_usage
 
 logger = logging.getLogger(__name__)
@@ -127,11 +133,25 @@ async def create_conversation(
     request: CreateConversationRequest,
     current_user: Dict = Depends(get_current_user),
 ) -> dict:
+    model = request.model
+    temperature = request.temperature
+
+    # If assistant_id is provided, use its defaults
+    if request.assistant_id:
+        assistant = assistants_crud.get_assistant(request.assistant_id, current_user["id"])
+        if not assistant:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+        if not model and assistant.get("model"):
+            model = assistant["model"]
+        if temperature is None and assistant.get("temperature") is not None:
+            temperature = assistant["temperature"]
+
     return storage.create_conversation(
         title=request.title or "New Conversation",
         user_id=current_user["id"],
-        model=request.model,
-        temperature=request.temperature,
+        model=model,
+        temperature=temperature,
+        assistant_id=request.assistant_id,
     )
 
 
@@ -183,9 +203,14 @@ async def delete_conversation(
     return {"deleted": True}
 
 
-def _build_llm_messages(conversation_messages: List[Dict]) -> List[Dict[str, str]]:
-    """Convert stored messages to LLM-compatible format."""
+def _build_llm_messages(
+    conversation_messages: List[Dict],
+    system_prompt: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """Convert stored messages to LLM-compatible format, optionally prepending a system prompt."""
     llm_messages = []
+    if system_prompt:
+        llm_messages.append({"role": "system", "content": system_prompt})
     for msg in conversation_messages:
         llm_messages.append({
             "role": msg["role"],
@@ -228,10 +253,20 @@ async def send_message(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Determine model and temperature: message-level > conversation-level > default
-    model = request.model or conversation.get("model") or DEFAULT_MODEL
+    # Load assistant if linked
+    system_prompt = None
+    assistant = None
+    if conversation.get("assistant_id"):
+        assistant = assistants_crud.get_assistant(conversation["assistant_id"], current_user["id"])
+        if assistant:
+            system_prompt = assistant.get("system_prompt")
+
+    # Determine model and temperature: message-level > conversation-level > assistant > default
+    model = request.model or conversation.get("model") or (assistant.get("model") if assistant else None) or DEFAULT_MODEL
     temperature = request.temperature if request.temperature is not None else (
-        conversation.get("temperature") if conversation.get("temperature") is not None else DEFAULT_TEMPERATURE
+        conversation.get("temperature") if conversation.get("temperature") is not None else (
+            assistant.get("temperature") if assistant and assistant.get("temperature") is not None else DEFAULT_TEMPERATURE
+        )
     )
 
     # Store user message
@@ -240,8 +275,8 @@ async def send_message(
     # Check if this is the first user message (for auto-naming)
     is_first_message = all(m["role"] != "user" for m in conversation.get("messages", []))
 
-    # Build LLM message history
-    llm_messages = _build_llm_messages(conversation.get("messages", []))
+    # Build LLM message history (with system prompt if assistant)
+    llm_messages = _build_llm_messages(conversation.get("messages", []), system_prompt=system_prompt)
     llm_messages.append({"role": "user", "content": request.content})
 
     if request.stream:
@@ -336,6 +371,142 @@ async def _stream_response(
     except Exception as e:
         logger.error(f"Stream error: {e}")
         yield f"data: {json.dumps({'error': 'An unexpected error occurred'})}\n\n"
+
+
+# ── Assistants Endpoints ──
+
+
+@app.get("/api/assistants", response_model=None)
+async def list_assistants(current_user: Dict = Depends(get_current_user)):
+    return assistants_crud.list_assistants(current_user["id"])
+
+
+@app.post("/api/assistants", response_model=None)
+async def create_assistant(
+    request: CreateAssistantRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    if request.is_global and not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Only admins can create global assistants")
+    return assistants_crud.create_assistant(
+        user_id=current_user["id"],
+        name=request.name,
+        description=request.description,
+        system_prompt=request.system_prompt,
+        model=request.model,
+        temperature=request.temperature,
+        is_global=request.is_global,
+        icon=request.icon,
+    )
+
+
+@app.get("/api/assistants/{assistant_id}", response_model=None)
+async def get_assistant(
+    assistant_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    assistant = assistants_crud.get_assistant(assistant_id, current_user["id"])
+    if not assistant:
+        raise HTTPException(status_code=404, detail="Assistant not found")
+    return assistant
+
+
+@app.patch("/api/assistants/{assistant_id}", response_model=None)
+async def update_assistant(
+    assistant_id: str,
+    request: UpdateAssistantRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    updates = request.model_dump(exclude_none=True)
+    result = assistants_crud.update_assistant(
+        assistant_id, current_user["id"],
+        is_admin=current_user.get("is_admin", False),
+        **updates,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Assistant not found or no permission")
+    return result
+
+
+@app.delete("/api/assistants/{assistant_id}", response_model=None)
+async def delete_assistant(
+    assistant_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    deleted = assistants_crud.delete_assistant(
+        assistant_id, current_user["id"],
+        is_admin=current_user.get("is_admin", False),
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Assistant not found or no permission")
+    return {"deleted": True}
+
+
+# ── Templates Endpoints ──
+
+
+@app.get("/api/templates", response_model=None)
+async def list_templates(current_user: Dict = Depends(get_current_user)):
+    return templates_crud.list_templates(current_user["id"])
+
+
+@app.post("/api/templates", response_model=None)
+async def create_template(
+    request: CreateTemplateRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    if request.is_global and not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Only admins can create global templates")
+    return templates_crud.create_template(
+        user_id=current_user["id"],
+        name=request.name,
+        description=request.description,
+        content=request.content,
+        category=request.category,
+        is_global=request.is_global,
+    )
+
+
+@app.get("/api/templates/{template_id}", response_model=None)
+async def get_template(
+    template_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    template = templates_crud.get_template(template_id, current_user["id"])
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return template
+
+
+@app.patch("/api/templates/{template_id}", response_model=None)
+async def update_template(
+    template_id: str,
+    request: UpdateTemplateRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    updates = request.model_dump(exclude_none=True)
+    result = templates_crud.update_template(
+        template_id, current_user["id"],
+        is_admin=current_user.get("is_admin", False),
+        **updates,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Template not found or no permission")
+    return result
+
+
+@app.delete("/api/templates/{template_id}", response_model=None)
+async def delete_template(
+    template_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    deleted = templates_crud.delete_template(
+        template_id, current_user["id"],
+        is_admin=current_user.get("is_admin", False),
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Template not found or no permission")
+    return {"deleted": True}
 
 
 # ── Usage Endpoint ──

@@ -6,6 +6,7 @@ class CreateConversationRequest(BaseModel):
     title: Optional[str] = "New Conversation"
     model: Optional[str] = None
     temperature: Optional[float] = None
+    assistant_id: Optional[str] = None
 
 
 class SendMessageRequest(BaseModel):
@@ -64,6 +65,42 @@ class AuthResponse(BaseModel):
     access_token: str
     refresh_token: str
     user: Dict[str, Any]
+
+
+# Assistant models
+class CreateAssistantRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    system_prompt: str = Field(min_length=1)
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    is_global: bool = False
+    icon: str = "\U0001f916"
+
+
+class UpdateAssistantRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    icon: Optional[str] = None
+
+
+# Template models
+class CreateTemplateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    content: str = Field(min_length=1)
+    category: str = "general"
+    is_global: bool = False
+
+
+class UpdateTemplateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
 
 
 # Usage models

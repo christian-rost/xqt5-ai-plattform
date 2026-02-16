@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import ModelSelector from './ModelSelector'
 import TemperatureSlider from './TemperatureSlider'
+import TemplatePicker from './TemplatePicker'
 
 export default function MessageInput({
   models,
   selectedModel,
   temperature,
   loading,
+  templates,
   onSend,
   onModelChange,
   onTemperatureChange,
@@ -27,6 +29,10 @@ export default function MessageInput({
     }
   }
 
+  function handleInsertTemplate(content) {
+    setMessage((prev) => prev ? prev + '\n' + content : content)
+  }
+
   return (
     <form className="input-form" onSubmit={handleSubmit}>
       <div className="input-controls">
@@ -38,6 +44,10 @@ export default function MessageInput({
         <TemperatureSlider
           temperature={temperature}
           onChange={onTemperatureChange}
+        />
+        <TemplatePicker
+          templates={templates}
+          onSelect={handleInsertTemplate}
         />
       </div>
       <div className="input-row">
