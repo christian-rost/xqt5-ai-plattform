@@ -46,8 +46,15 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 2. RAG-Pipeline: Chunking, Embeddings (pgvector), Vektor-Suche
 3. Kontext-Injection bei Nachrichten
 
-## Phase D: Enterprise (geplant)
+## Phase D: Enterprise (teilweise umgesetzt 2026-02-16)
+### Admin-Dashboard + Audit-Logs (umgesetzt)
+1. Admin-Dashboard mit Tab-Navigation (Benutzer, Kosten, Statistiken, Modelle, Audit-Logs)
+2. Benutzer-Verwaltung: Active/Admin-Toggle mit Selbstschutz
+3. Kosten-Dashboard: Globale Totals + Per-User Aufschlüsselung
+4. System-Statistiken: Users, Chats, Messages, Assistenten, Templates
+5. Modell-Konfiguration via DB (app_model_config) statt hardcoded — Enable/Disable, Default
+6. Audit-Logs: Auth-, Admin-, Chat-Events mit fire-and-forget Logging
+7. Paginierte Audit-Log-Anzeige mit Aktions-Filter
+### Noch geplant
 1. Workflow-Engine für automatisierte Abläufe
-2. Admin-Dashboard (Policies, Kosten-Metriken, Admin-User)
-3. Audit-Logs für Compliance
-4. SSO (OIDC/SAML)
+2. SSO (OIDC/SAML)

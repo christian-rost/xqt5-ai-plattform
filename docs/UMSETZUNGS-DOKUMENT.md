@@ -57,6 +57,8 @@
 | `chat_token_usage` | XQT5 AI Plattform | Token-Verbrauch + Kosten pro Anfrage |
 | `assistants` | XQT5 AI Plattform | KI-Assistenten mit System-Prompts |
 | `prompt_templates` | XQT5 AI Plattform | Prompt-Templates mit Platzhaltern |
+| `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste |
+| `app_audit_logs` | XQT5 AI Plattform | Audit-Log-Einträge |
 | `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
 | `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
 | `messages` | llm-council | Pipeline-Nachrichten (stage1/2/3, metadata) |
@@ -78,7 +80,7 @@
    - Domain: `ai-hub.xqtfive.com`
    - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 4. `CORS_ORIGINS` im Backend auf Frontend-Domain setzen
-5. Supabase-Migrationen ausführen (initial + phase_a + phase_b)
+5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_d)
 
 ### Phase B: User & Kosten-Management (2026-02-15)
 1. **Eigene User-Tabelle** (`app_users`):
@@ -139,8 +141,50 @@
    - `storage.py`: `assistant_id` in create/get_conversation
    - `models.py`: 4 neue Request-Models
 
+### Phase D: Admin-Dashboard + Audit-Logs (2026-02-16)
+1. **Datenbank-Migration** (`supabase/migrations/20260216_phase_d_admin_audit.sql`):
+   - `app_model_config` Tabelle (model_id, provider, display_name, is_enabled, is_default, sort_order)
+   - Seed mit 9 aktuellen Modellen aus `llm.py`
+   - `app_audit_logs` Tabelle (user_id, action, target_type, target_id, metadata, ip_address)
+   - Indizes auf user_id, action, created_at, (target_type, target_id)
+2. **Admin-Modul** (`backend/app/admin.py`):
+   - `list_users()`, `update_user()` (Active/Admin-Toggle)
+   - `get_global_usage_summary()`, `get_usage_per_user()` (Token-Kosten Aggregation)
+   - `get_system_stats()` (Zähler: Users, Chats, Messages, Assistenten, Templates)
+   - `list_model_configs()`, `create_model_config()`, `update_model_config()`, `delete_model_config()`
+   - Default-Modell-Logik: Setzen eines neuen Defaults setzt alle anderen zurück
+3. **Audit-Modul** (`backend/app/audit.py`):
+   - Action-Konstanten für Auth, Admin, Chat
+   - `log_event()` — fire-and-forget Audit-Logging
+   - `list_audit_logs()` — paginierte Abfrage mit Filtern, JOIN auf app_users für Username
+4. **Admin API-Endpoints** (alle `Depends(get_current_admin)`):
+   - `GET/PATCH /api/admin/users/{id}` — User-Verwaltung (Selbstschutz: kein Self-Deactivate)
+   - `GET /api/admin/usage` — Globale + Per-User Kosten
+   - `GET /api/admin/stats` — System-Statistiken
+   - `GET/POST/PATCH/DELETE /api/admin/models` — Modell-Konfigurationen
+   - `GET /api/admin/audit-logs` — Paginierte Audit-Logs mit Filtern
+5. **LLM-Modul** (`backend/app/llm.py`):
+   - `get_available_models()` liest aus DB (`app_model_config`), Fallback auf hardcoded Liste
+6. **Audit-Events** in bestehende Endpoints injiziert:
+   - Auth: login (success + failed), register
+   - Admin: user toggles, model config CRUD
+   - Chat: conversation create/delete, message send (nur Metadaten, kein Inhalt)
+7. **Frontend**:
+   - `AdminDashboard.jsx`: Tab-basierte Navigation (Benutzer, Kosten, Statistiken, Modelle, Audit-Logs)
+   - Benutzer-Tab: Tabelle mit Active/Admin Toggle-Switches
+   - Kosten-Tab: Globale Totals (Cards) + Per-User-Tabelle sortiert nach Kosten
+   - Statistiken-Tab: Card-Grid (6 Metriken)
+   - Modelle-Tab: Enable/Disable Toggle, Default-Radio, Neues Modell hinzufügen
+   - Audit-Logs-Tab: Paginierte Tabelle mit Aktions-Filter, "Mehr laden"-Button
+   - `Sidebar.jsx`: Admin-Button (nur für Admins sichtbar)
+   - `App.jsx`: showAdmin State, bedingtes Rendering (AdminDashboard statt ChatArea)
+   - `api.js`: 9 neue Admin-API-Methoden
+   - `styles.css`: Admin-Dashboard, Tabs, Cards, Table, Toggle-Switches
+8. **Pydantic-Models** (`backend/app/models.py`):
+   - `UpdateUserRequest`, `CreateModelConfigRequest`, `UpdateModelConfigRequest`
+
 ## Nächste Umsetzungsschritte
 1. **Phase C Schritt 2**: Datei-Upload, RAG-Pipeline (pgvector, Embeddings, Vektor-Suche)
-2. **Phase D**: Admin-Dashboard, Workflow-Engine, Audit-Logs, SSO
+2. **Phase D Rest**: Workflow-Engine, SSO (OIDC/SAML)
 3. RLS und Mandantenmodell in Supabase aktivieren
 4. Integrationstests für API und End-to-End-Chat

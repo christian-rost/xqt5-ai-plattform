@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -13,6 +13,7 @@ from .auth import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    get_current_admin,
     get_current_user,
     get_user_by_id,
     register_user,
@@ -22,6 +23,7 @@ from .llm import call_llm, get_available_models, LLMError, parse_model_string, s
 from .models import (
     CreateAssistantRequest,
     CreateConversationRequest,
+    CreateModelConfigRequest,
     CreateTemplateRequest,
     LoginRequest,
     RefreshRequest,
@@ -29,9 +31,13 @@ from .models import (
     SendMessageRequest,
     UpdateAssistantRequest,
     UpdateConversationRequest,
+    UpdateModelConfigRequest,
     UpdateTemplateRequest,
+    UpdateUserRequest,
 )
+from . import admin as admin_crud
 from . import assistants as assistants_crud
+from . import audit
 from . import storage
 from . import templates as templates_crud
 from .token_tracking import record_usage
@@ -71,10 +77,11 @@ async def list_models() -> list:
 
 
 @app.post("/api/auth/register", response_model=None)
-async def register(request: RegisterRequest):
+async def register(request: RegisterRequest, req: Request):
     user = register_user(request.username, request.email, request.password)
     access_token = create_access_token(user["id"], user.get("is_admin", False))
     refresh_token = create_refresh_token(user["id"])
+    audit.log_event(audit.AUTH_REGISTER, user_id=user["id"], ip_address=req.client.host)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -83,12 +90,18 @@ async def register(request: RegisterRequest):
 
 
 @app.post("/api/auth/login", response_model=None)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, req: Request):
     user = authenticate_user(request.username, request.password)
     if not user:
+        audit.log_event(
+            audit.AUTH_LOGIN_FAILED,
+            metadata={"username": request.username},
+            ip_address=req.client.host,
+        )
         raise HTTPException(status_code=401, detail="Invalid username or password")
     access_token = create_access_token(user["id"], user.get("is_admin", False))
     refresh_token = create_refresh_token(user["id"])
+    audit.log_event(audit.AUTH_LOGIN, user_id=user["id"], ip_address=req.client.host)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -146,13 +159,20 @@ async def create_conversation(
         if temperature is None and assistant.get("temperature") is not None:
             temperature = assistant["temperature"]
 
-    return storage.create_conversation(
+    result = storage.create_conversation(
         title=request.title or "New Conversation",
         user_id=current_user["id"],
         model=model,
         temperature=temperature,
         assistant_id=request.assistant_id,
     )
+    audit.log_event(
+        audit.CHAT_CONVERSATION_CREATE,
+        user_id=current_user["id"],
+        target_type="conversation",
+        target_id=result.get("id"),
+    )
+    return result
 
 
 @app.get("/api/conversations/{conversation_id}")
@@ -200,6 +220,12 @@ async def delete_conversation(
     deleted = storage.delete_conversation(conversation_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    audit.log_event(
+        audit.CHAT_CONVERSATION_DELETE,
+        user_id=current_user["id"],
+        target_type="conversation",
+        target_id=conversation_id,
+    )
     return {"deleted": True}
 
 
@@ -315,6 +341,15 @@ async def send_message(
             completion_tokens=usage.get("completion_tokens", usage.get("output_tokens", 0)),
         )
 
+    # Audit log (metadata only, no content)
+    audit.log_event(
+        audit.CHAT_MESSAGE_SEND,
+        user_id=current_user["id"],
+        target_type="conversation",
+        target_id=conversation_id,
+        metadata={"model": model},
+    )
+
     # Auto-name in background
     if is_first_message:
         asyncio.create_task(_auto_name_conversation(conversation_id, request.content))
@@ -359,6 +394,15 @@ async def _stream_response(
                 prompt_tokens=usage.get("prompt_tokens", usage.get("input_tokens", 0)),
                 completion_tokens=usage.get("completion_tokens", usage.get("output_tokens", 0)),
             )
+
+        # Audit log (metadata only, no content)
+        audit.log_event(
+            audit.CHAT_MESSAGE_SEND,
+            user_id=user_id,
+            target_type="conversation",
+            target_id=conversation_id,
+            metadata={"model": model},
+        )
 
         yield f"data: {json.dumps({'done': True, 'content': full_content})}\n\n"
 
@@ -516,3 +560,131 @@ async def delete_template(
 async def get_usage(current_user: Dict = Depends(get_current_user)):
     from .token_tracking import get_user_usage_summary
     return get_user_usage_summary(current_user["id"])
+
+
+# ── Admin Endpoints ──
+
+
+@app.get("/api/admin/users", response_model=None)
+async def admin_list_users(admin: Dict = Depends(get_current_admin)):
+    return admin_crud.list_users()
+
+
+@app.patch("/api/admin/users/{user_id}", response_model=None)
+async def admin_update_user(
+    user_id: str,
+    request: UpdateUserRequest,
+    admin: Dict = Depends(get_current_admin),
+):
+    # Self-protection: admin cannot deactivate or de-admin themselves
+    if user_id == admin["id"]:
+        if request.is_active is False:
+            raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+        if request.is_admin is False:
+            raise HTTPException(status_code=400, detail="Cannot remove your own admin status")
+
+    result = admin_crud.update_user(user_id, is_active=request.is_active, is_admin=request.is_admin)
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Audit log for user toggles
+    if request.is_active is not None:
+        action = audit.ADMIN_USER_ACTIVATE if request.is_active else audit.ADMIN_USER_DEACTIVATE
+        audit.log_event(action, user_id=admin["id"], target_type="user", target_id=user_id)
+    if request.is_admin is not None:
+        action = audit.ADMIN_USER_GRANT_ADMIN if request.is_admin else audit.ADMIN_USER_REVOKE_ADMIN
+        audit.log_event(action, user_id=admin["id"], target_type="user", target_id=user_id)
+
+    return result
+
+
+@app.get("/api/admin/usage", response_model=None)
+async def admin_get_usage(admin: Dict = Depends(get_current_admin)):
+    return {
+        "global": admin_crud.get_global_usage_summary(),
+        "per_user": admin_crud.get_usage_per_user(),
+    }
+
+
+@app.get("/api/admin/stats", response_model=None)
+async def admin_get_stats(admin: Dict = Depends(get_current_admin)):
+    return admin_crud.get_system_stats()
+
+
+@app.get("/api/admin/models", response_model=None)
+async def admin_list_models(admin: Dict = Depends(get_current_admin)):
+    return admin_crud.list_model_configs()
+
+
+@app.post("/api/admin/models", response_model=None)
+async def admin_create_model(
+    request: CreateModelConfigRequest,
+    admin: Dict = Depends(get_current_admin),
+):
+    result = admin_crud.create_model_config(
+        model_id=request.model_id,
+        provider=request.provider,
+        display_name=request.display_name,
+        sort_order=request.sort_order,
+    )
+    audit.log_event(
+        audit.ADMIN_MODEL_CREATE,
+        user_id=admin["id"],
+        target_type="model_config",
+        target_id=result.get("id"),
+        metadata={"model_id": request.model_id},
+    )
+    return result
+
+
+@app.patch("/api/admin/models/{model_config_id}", response_model=None)
+async def admin_update_model(
+    model_config_id: str,
+    request: UpdateModelConfigRequest,
+    admin: Dict = Depends(get_current_admin),
+):
+    updates = request.model_dump(exclude_none=True)
+    result = admin_crud.update_model_config(model_config_id, **updates)
+    if not result:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    audit.log_event(
+        audit.ADMIN_MODEL_UPDATE,
+        user_id=admin["id"],
+        target_type="model_config",
+        target_id=model_config_id,
+        metadata=updates,
+    )
+    return result
+
+
+@app.delete("/api/admin/models/{model_config_id}", response_model=None)
+async def admin_delete_model(
+    model_config_id: str,
+    admin: Dict = Depends(get_current_admin),
+):
+    deleted = admin_crud.delete_model_config(model_config_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    audit.log_event(
+        audit.ADMIN_MODEL_DELETE,
+        user_id=admin["id"],
+        target_type="model_config",
+        target_id=model_config_id,
+    )
+    return {"deleted": True}
+
+
+@app.get("/api/admin/audit-logs", response_model=None)
+async def admin_get_audit_logs(
+    limit: int = 100,
+    offset: int = 0,
+    action: Optional[str] = None,
+    user_id: Optional[str] = None,
+    admin: Dict = Depends(get_current_admin),
+):
+    return audit.list_audit_logs(
+        limit=min(limit, 500),
+        offset=offset,
+        action_filter=action,
+        user_id_filter=user_id,
+    )

@@ -244,6 +244,84 @@ export const api = {
     return response.json()
   },
 
+  // Admin
+  async adminListUsers() {
+    const response = await authFetch(`${API_BASE}/api/admin/users`)
+    if (!response.ok) throw new Error('Konnte Benutzer nicht laden')
+    return response.json()
+  },
+
+  async adminUpdateUser(userId, data) {
+    const response = await authFetch(`${API_BASE}/api/admin/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Benutzer nicht aktualisieren')
+    }
+    return response.json()
+  },
+
+  async adminGetUsage() {
+    const response = await authFetch(`${API_BASE}/api/admin/usage`)
+    if (!response.ok) throw new Error('Konnte Nutzungsdaten nicht laden')
+    return response.json()
+  },
+
+  async adminGetStats() {
+    const response = await authFetch(`${API_BASE}/api/admin/stats`)
+    if (!response.ok) throw new Error('Konnte Statistiken nicht laden')
+    return response.json()
+  },
+
+  async adminListModels() {
+    const response = await authFetch(`${API_BASE}/api/admin/models`)
+    if (!response.ok) throw new Error('Konnte Modell-Konfigurationen nicht laden')
+    return response.json()
+  },
+
+  async adminCreateModel(data) {
+    const response = await authFetch(`${API_BASE}/api/admin/models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Modell nicht erstellen')
+    }
+    return response.json()
+  },
+
+  async adminUpdateModel(id, data) {
+    const response = await authFetch(`${API_BASE}/api/admin/models/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Konnte Modell nicht aktualisieren')
+    return response.json()
+  },
+
+  async adminDeleteModel(id) {
+    const response = await authFetch(`${API_BASE}/api/admin/models/${id}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Modell nicht löschen')
+    return response.json()
+  },
+
+  async adminGetAuditLogs(limit = 100, offset = 0, action = null, userId = null) {
+    let url = `${API_BASE}/api/admin/audit-logs?limit=${limit}&offset=${offset}`
+    if (action) url += `&action=${encodeURIComponent(action)}`
+    if (userId) url += `&user_id=${encodeURIComponent(userId)}`
+    const response = await authFetch(url)
+    if (!response.ok) throw new Error('Konnte Audit-Logs nicht laden')
+    return response.json()
+  },
+
   async sendMessageStream(id, content, model, temperature, onDelta, onDone, onError) {
     const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',

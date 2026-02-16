@@ -1,9 +1,12 @@
 import json
+import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import httpx
 
 from .config import PROVIDER_KEYS
+
+logger = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
@@ -65,6 +68,27 @@ def parse_model_string(model_string: str) -> Tuple[str, str]:
 
 
 def get_available_models() -> List[Dict[str, Any]]:
+    """Return available models from DB (app_model_config), fallback to hardcoded list."""
+    try:
+        from .database import supabase
+        db_result = supabase.table("app_model_config").select("*").eq(
+            "is_enabled", True
+        ).order("sort_order").execute()
+        if db_result.data:
+            result = []
+            for row in db_result.data:
+                available = bool(PROVIDER_KEYS.get(row["provider"]))
+                result.append({
+                    "id": row["model_id"],
+                    "provider": row["provider"],
+                    "name": row["display_name"],
+                    "available": available,
+                })
+            return result
+    except Exception as e:
+        logger.warning(f"Failed to load models from DB, using fallback: {e}")
+
+    # Fallback to hardcoded list
     result = []
     for model in AVAILABLE_MODELS:
         available = bool(PROVIDER_KEYS.get(model["provider"]))

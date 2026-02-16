@@ -8,11 +8,13 @@ export default function Sidebar({
   activeId,
   loading,
   assistants,
+  showAdmin,
   onCreateConversation,
   onOpenConversation,
   onSelectAssistant,
   onManageAssistants,
   onManageTemplates,
+  onAdmin,
   onLogout,
 }) {
   return (
@@ -53,6 +55,14 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
+        {user?.is_admin && (
+          <button
+            className={`sidebar-admin-btn ${showAdmin ? 'active' : ''}`}
+            onClick={onAdmin}
+          >
+            Admin-Dashboard
+          </button>
+        )}
         <div className="sidebar-actions">
           <button className="sidebar-action-btn" onClick={onManageAssistants}>Assistenten</button>
           <button className="sidebar-action-btn" onClick={onManageTemplates}>Templates</button>

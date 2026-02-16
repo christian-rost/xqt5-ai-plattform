@@ -110,3 +110,23 @@ class UsageSummaryResponse(BaseModel):
     completion_tokens: int
     estimated_cost: float
     request_count: int
+
+
+# Admin models
+class UpdateUserRequest(BaseModel):
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+
+
+class CreateModelConfigRequest(BaseModel):
+    model_id: str = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    sort_order: int = 0
+
+
+class UpdateModelConfigRequest(BaseModel):
+    display_name: Optional[str] = None
+    is_enabled: Optional[bool] = None
+    is_default: Optional[bool] = None
+    sort_order: Optional[int] = None

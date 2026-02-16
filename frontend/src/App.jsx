@@ -3,6 +3,7 @@ import { api } from './api'
 import LoginScreen from './components/LoginScreen'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
+import AdminDashboard from './components/AdminDashboard'
 import AssistantManager from './components/AssistantManager'
 import TemplateManager from './components/TemplateManager'
 
@@ -28,6 +29,9 @@ export default function App() {
   const [templates, setTemplates] = useState([])
   const [showAssistantManager, setShowAssistantManager] = useState(false)
   const [showTemplateManager, setShowTemplateManager] = useState(false)
+
+  // Phase D state
+  const [showAdmin, setShowAdmin] = useState(false)
 
   // Check auth on mount
   useEffect(() => {
@@ -282,26 +286,32 @@ export default function App() {
         activeId={activeConversation?.id}
         loading={loading}
         assistants={assistants}
+        showAdmin={showAdmin}
         onCreateConversation={() => onCreateConversation()}
         onOpenConversation={onOpenConversation}
         onSelectAssistant={onSelectAssistant}
         onManageAssistants={() => setShowAssistantManager(true)}
         onManageTemplates={() => setShowTemplateManager(true)}
+        onAdmin={() => setShowAdmin(true)}
         onLogout={handleLogout}
       />
-      <ChatArea
-        conversation={activeConversation}
-        models={models}
-        selectedModel={selectedModel}
-        temperature={temperature}
-        loading={loading}
-        streamingContent={streamingContent}
-        error={error}
-        templates={templates}
-        onSend={onSendMessage}
-        onModelChange={onModelChange}
-        onTemperatureChange={onTemperatureChange}
-      />
+      {showAdmin ? (
+        <AdminDashboard onClose={() => setShowAdmin(false)} />
+      ) : (
+        <ChatArea
+          conversation={activeConversation}
+          models={models}
+          selectedModel={selectedModel}
+          temperature={temperature}
+          loading={loading}
+          streamingContent={streamingContent}
+          error={error}
+          templates={templates}
+          onSend={onSendMessage}
+          onModelChange={onModelChange}
+          onTemperatureChange={onTemperatureChange}
+        />
+      )}
 
       {showAssistantManager && (
         <AssistantManager
