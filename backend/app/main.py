@@ -694,8 +694,8 @@ async def admin_set_provider_key(
     api_key = body.get("api_key", "").strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key is required")
-    endpoint_url = body.get("endpoint_url", "").strip() or None
-    api_version = body.get("api_version", "").strip() or None
+    endpoint_url = body.get("endpoint_url")
+    api_version = body.get("api_version")
     providers_mod.set_provider_key(
         provider, api_key,
         endpoint_url=endpoint_url,

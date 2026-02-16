@@ -125,9 +125,9 @@ def set_provider_key(
         "is_active": True,
     }
     if endpoint_url is not None:
-        row["endpoint_url"] = endpoint_url
+        row["endpoint_url"] = endpoint_url.strip() or None
     if api_version is not None:
-        row["api_version"] = api_version
+        row["api_version"] = api_version.strip() or None
     result = supabase.table("app_provider_keys").upsert(
         row, on_conflict="provider"
     ).execute()
