@@ -11,6 +11,7 @@ export default function Sidebar({
   showAdmin,
   onCreateConversation,
   onOpenConversation,
+  onDeleteConversation,
   onSelectAssistant,
   onManageAssistants,
   onManageTemplates,
@@ -49,6 +50,16 @@ export default function Sidebar({
             >
               <span className="conversation-title">{item.title}</span>
               <span className="message-count">{item.message_count} messages</span>
+              <button
+                className="delete-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (confirm('Konversation löschen?')) onDeleteConversation(item.id)
+                }}
+                title="Konversation löschen"
+              >
+                ×
+              </button>
             </div>
           ))
         )}

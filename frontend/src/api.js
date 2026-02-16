@@ -152,6 +152,14 @@ export const api = {
     return response.json()
   },
 
+  async deleteConversation(id) {
+    const response = await authFetch(`${API_BASE}/api/conversations/${id}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Konversation nicht löschen')
+    return response.json()
+  },
+
   async listModels() {
     const response = await fetch(`${API_BASE}/api/models`)
     if (!response.ok) throw new Error('Konnte Modelle nicht laden')

@@ -168,6 +168,19 @@ export default function App() {
     }
   }
 
+  async function onDeleteConversation(id) {
+    setError('')
+    try {
+      await api.deleteConversation(id)
+      setConversations((prev) => prev.filter((c) => c.id !== id))
+      if (activeConversation?.id === id) {
+        setActiveConversation(null)
+      }
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   async function onSendMessage(content) {
     if (!activeConversation) return
 
@@ -289,6 +302,7 @@ export default function App() {
         showAdmin={showAdmin}
         onCreateConversation={() => onCreateConversation()}
         onOpenConversation={onOpenConversation}
+        onDeleteConversation={onDeleteConversation}
         onSelectAssistant={onSelectAssistant}
         onManageAssistants={() => setShowAssistantManager(true)}
         onManageTemplates={() => setShowTemplateManager(true)}
