@@ -4,7 +4,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import httpx
 
-from .config import PROVIDER_KEYS
+from .providers import get_api_key as _provider_get_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ def get_available_models() -> List[Dict[str, Any]]:
         if db_result.data:
             result = []
             for row in db_result.data:
-                available = bool(PROVIDER_KEYS.get(row["provider"]))
+                available = bool(_provider_get_api_key(row["provider"]))
                 result.append({
                     "id": row["model_id"],
                     "provider": row["provider"],
@@ -91,13 +91,13 @@ def get_available_models() -> List[Dict[str, Any]]:
     # Fallback to hardcoded list
     result = []
     for model in AVAILABLE_MODELS:
-        available = bool(PROVIDER_KEYS.get(model["provider"]))
+        available = bool(_provider_get_api_key(model["provider"]))
         result.append({**model, "available": available})
     return result
 
 
 def _get_api_key(provider: str) -> str:
-    key = PROVIDER_KEYS.get(provider, "")
+    key = _provider_get_api_key(provider)
     if not key:
         raise LLMError(f"No API key configured for provider: {provider}")
     return key

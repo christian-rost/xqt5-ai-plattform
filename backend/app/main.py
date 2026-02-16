@@ -38,6 +38,7 @@ from .models import (
 from . import admin as admin_crud
 from . import assistants as assistants_crud
 from . import audit
+from . import providers as providers_mod
 from . import storage
 from . import templates as templates_crud
 from .token_tracking import record_usage
@@ -672,6 +673,59 @@ async def admin_delete_model(
         target_id=model_config_id,
     )
     return {"deleted": True}
+
+
+# ── Provider Key Management ──
+
+
+@app.get("/api/admin/providers", response_model=None)
+async def admin_list_providers(admin: Dict = Depends(get_current_admin)):
+    return providers_mod.list_providers()
+
+
+@app.put("/api/admin/providers/{provider}/key", response_model=None)
+async def admin_set_provider_key(
+    provider: str,
+    request: Request,
+    admin: Dict = Depends(get_current_admin),
+):
+    body = await request.json()
+    api_key = body.get("api_key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+    providers_mod.set_provider_key(provider, api_key)
+    audit.log_event(
+        "admin.provider.set_key",
+        user_id=admin["id"],
+        target_type="provider",
+        target_id=provider,
+    )
+    return {"status": "saved", "provider": provider}
+
+
+@app.delete("/api/admin/providers/{provider}/key", response_model=None)
+async def admin_delete_provider_key(
+    provider: str,
+    admin: Dict = Depends(get_current_admin),
+):
+    deleted = providers_mod.delete_provider_key(provider)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Provider key not found")
+    audit.log_event(
+        "admin.provider.delete_key",
+        user_id=admin["id"],
+        target_type="provider",
+        target_id=provider,
+    )
+    return {"status": "deleted", "provider": provider}
+
+
+@app.post("/api/admin/providers/{provider}/test", response_model=None)
+async def admin_test_provider(
+    provider: str,
+    admin: Dict = Depends(get_current_admin),
+):
+    return await providers_mod.test_provider(provider)
 
 
 @app.get("/api/admin/audit-logs", response_model=None)

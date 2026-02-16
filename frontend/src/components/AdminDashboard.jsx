@@ -6,6 +6,7 @@ const TABS = [
   { id: 'costs', label: 'Kosten' },
   { id: 'stats', label: 'Statistiken' },
   { id: 'models', label: 'Modelle' },
+  { id: 'providers', label: 'Provider' },
   { id: 'audit', label: 'Audit-Logs' },
 ]
 
@@ -38,6 +39,7 @@ export default function AdminDashboard({ onClose }) {
         {activeTab === 'costs' && <CostsTab />}
         {activeTab === 'stats' && <StatsTab />}
         {activeTab === 'models' && <ModelsTab />}
+        {activeTab === 'providers' && <ProvidersTab />}
         {activeTab === 'audit' && <AuditTab />}
       </div>
     </div>
@@ -368,6 +370,149 @@ function ModelsTab() {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function ProvidersTab() {
+  const [providers, setProviders] = useState([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [keyInputs, setKeyInputs] = useState({})
+  const [saving, setSaving] = useState({})
+  const [testing, setTesting] = useState({})
+  const [testResults, setTestResults] = useState({})
+
+  useEffect(() => {
+    loadProviders()
+  }, [])
+
+  async function loadProviders() {
+    try {
+      const data = await api.adminListProviders()
+      setProviders(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSave(provider) {
+    const key = (keyInputs[provider] || '').trim()
+    if (!key) return
+    setSaving((s) => ({ ...s, [provider]: true }))
+    setError('')
+    setTestResults((r) => ({ ...r, [provider]: null }))
+    try {
+      await api.adminSetProviderKey(provider, key)
+      setKeyInputs((k) => ({ ...k, [provider]: '' }))
+      await loadProviders()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving((s) => ({ ...s, [provider]: false }))
+    }
+  }
+
+  async function handleDelete(provider) {
+    if (!confirm(`API-Key für ${provider} wirklich deaktivieren?`)) return
+    setError('')
+    setTestResults((r) => ({ ...r, [provider]: null }))
+    try {
+      await api.adminDeleteProviderKey(provider)
+      await loadProviders()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function handleTest(provider) {
+    setTesting((t) => ({ ...t, [provider]: true }))
+    setTestResults((r) => ({ ...r, [provider]: null }))
+    try {
+      const result = await api.adminTestProvider(provider)
+      setTestResults((r) => ({ ...r, [provider]: result }))
+    } catch (e) {
+      setTestResults((r) => ({ ...r, [provider]: { success: false, error: e.message } }))
+    } finally {
+      setTesting((t) => ({ ...t, [provider]: false }))
+    }
+  }
+
+  function sourceBadge(source) {
+    if (source === 'db') return <span className="badge badge-success">DB Key</span>
+    if (source === 'env') return <span className="badge badge-info">Env Var</span>
+    return <span className="badge badge-warning">Nicht konfiguriert</span>
+  }
+
+  if (loading) return <div className="admin-loading">Laden...</div>
+
+  return (
+    <div>
+      {error && <div className="admin-error">{error}</div>}
+
+      <div className="provider-grid">
+        {providers.map((p) => (
+          <div className="provider-card" key={p.provider}>
+            <div className="provider-card-header">
+              <strong>{p.display_name}</strong>
+              {sourceBadge(p.source)}
+            </div>
+
+            <div className="provider-card-body">
+              <div className="provider-key-row">
+                <input
+                  className="form-input"
+                  type="password"
+                  placeholder="API-Key eingeben..."
+                  value={keyInputs[p.provider] || ''}
+                  onChange={(e) => setKeyInputs((k) => ({ ...k, [p.provider]: e.target.value }))}
+                />
+              </div>
+
+              <div className="provider-actions">
+                <button
+                  className="btn btn-primary btn-small"
+                  onClick={() => handleSave(p.provider)}
+                  disabled={saving[p.provider] || !keyInputs[p.provider]?.trim()}
+                >
+                  {saving[p.provider] ? 'Speichern...' : 'Speichern'}
+                </button>
+
+                <button
+                  className="btn btn-secondary btn-small"
+                  onClick={() => handleTest(p.provider)}
+                  disabled={testing[p.provider] || p.source === 'none'}
+                >
+                  {testing[p.provider] ? 'Teste...' : 'Testen'}
+                </button>
+
+                {p.has_db && (
+                  <button
+                    className="btn btn-danger btn-small"
+                    onClick={() => handleDelete(p.provider)}
+                  >
+                    DB-Key löschen
+                  </button>
+                )}
+              </div>
+
+              {testResults[p.provider] && (
+                <div className={`provider-test-result ${testResults[p.provider].success ? 'success' : 'error'}`}>
+                  {testResults[p.provider].success
+                    ? testResults[p.provider].message
+                    : testResults[p.provider].error}
+                </div>
+              )}
+
+              {p.has_env && p.source === 'db' && (
+                <div className="provider-hint">Env-Var als Fallback vorhanden</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

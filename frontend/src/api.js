@@ -321,6 +321,42 @@ export const api = {
     return response.json()
   },
 
+  // Provider Keys
+  async adminListProviders() {
+    const response = await authFetch(`${API_BASE}/api/admin/providers`)
+    if (!response.ok) throw new Error('Konnte Provider nicht laden')
+    return response.json()
+  },
+
+  async adminSetProviderKey(provider, apiKey) {
+    const response = await authFetch(`${API_BASE}/api/admin/providers/${provider}/key`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Key nicht speichern')
+    }
+    return response.json()
+  },
+
+  async adminDeleteProviderKey(provider) {
+    const response = await authFetch(`${API_BASE}/api/admin/providers/${provider}/key`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Key nicht löschen')
+    return response.json()
+  },
+
+  async adminTestProvider(provider) {
+    const response = await authFetch(`${API_BASE}/api/admin/providers/${provider}/test`, {
+      method: 'POST',
+    })
+    if (!response.ok) throw new Error('Test fehlgeschlagen')
+    return response.json()
+  },
+
   async adminGetAuditLogs(limit = 100, offset = 0, action = null, userId = null) {
     let url = `${API_BASE}/api/admin/audit-logs?limit=${limit}&offset=${offset}`
     if (action) url += `&action=${encodeURIComponent(action)}`
