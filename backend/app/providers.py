@@ -230,7 +230,7 @@ async def _test_azure(api_key: str) -> Dict[str, Any]:
     # Test with actual deployment
     url = f"{endpoint_url}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
     headers = {"api-key": api_key, "Content-Type": "application/json"}
-    payload = {"messages": [{"role": "user", "content": "Hi"}], "max_completion_tokens": 1}
+    payload = {"messages": [{"role": "user", "content": "Hi"}], "max_completion_tokens": 5}
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
