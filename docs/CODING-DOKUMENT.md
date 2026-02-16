@@ -58,6 +58,14 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   Ursache: Azure nutzt Deployment-Names (z.B. `gpt-4o-deployment`) statt Model-Names (z.B. `gpt-4o`) in der API-URL. Ohne Mapping schlug der Call fehl.
   Korrektur: Eigene `deployment_name` Spalte in `app_model_config` mit Lookup in `_azure_url()`. **Regel: Azure-Modelle immer mit deployment_name in app_model_config anlegen.**
 
+### 2026-02-16 (Phase C Schritt 2 — RAG)
+- **Hinweis: pgvector Extension muss vor Migration aktiviert werden.**
+  Die `vector`-Extension wird per `CREATE EXTENSION IF NOT EXISTS vector` in der Migration aufgerufen, muss aber in Supabase unter Dashboard → Database → Extensions vorab aktiviert sein.
+- **Hinweis: OpenAI API-Key für Embeddings zwingend erforderlich.**
+  Embeddings laufen über OpenAI (text-embedding-3-small). Ohne konfigurierten OpenAI-Key schlägt der Upload fehl. Key kann via Env oder Admin-Provider-UI gesetzt werden.
+- **Hinweis: Supabase RPC `match_document_chunks` benötigt pgvector-Operatoren.**
+  Die Funktion nutzt `<=>` (Cosine Distance). Ohne pgvector Extension schlägt die Suche fehl.
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. Kein Rate-Limiting auf LLM-Endpoints — authentifizierte User können unbegrenzt Kosten verursachen.

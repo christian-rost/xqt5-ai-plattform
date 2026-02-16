@@ -32,7 +32,7 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 6. Login-/Register-Screen im Frontend
 7. Einfaches Admin vs. Normaluser (Gruppen auf Phase D verschoben)
 
-## Phase C: Wissen & Assistenten (Schritt 1 umgesetzt 2026-02-16)
+## Phase C: Wissen & Assistenten (umgesetzt 2026-02-16)
 ### Schritt 1: KI-Assistenten + Prompt-Templates (umgesetzt)
 1. Konfigurierbare KI-Assistenten (System-Prompts, Modell/Temperature-Override, Icons)
 2. Globale Assistenten (nur Admins) + persönliche Assistenten
@@ -41,10 +41,15 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 5. Template-Picker in Message-Input
 6. Assistenten-Selector in Sidebar + Manager-Modal
 7. Template-Manager-Modal
-### Schritt 2: File Upload + RAG-Pipeline (geplant)
-1. Datei-Upload (PDF, DOCX, TXT)
-2. RAG-Pipeline: Chunking, Embeddings (pgvector), Vektor-Suche
-3. Kontext-Injection bei Nachrichten
+### Schritt 2: File Upload + RAG-Pipeline (umgesetzt 2026-02-16)
+1. Datei-Upload (PDF, TXT) pro Chat oder als globale Wissensbasis
+2. Text-Extraktion via pypdf (PDF) / UTF-8 (TXT)
+3. Paragraph-aware Chunking mit konfigurierbarer Größe und Overlap
+4. OpenAI Embeddings (text-embedding-3-small, 1536 Dimensionen)
+5. pgvector HNSW-Index für schnelle Cosine-Similarity-Suche
+6. Automatische RAG-Kontext-Injection in Chat-Nachrichten
+7. Source-Attribution unter Assistant-Antworten
+8. Upload-Button, Document-Tags, Source-Tags im Frontend
 
 ## Phase D: Enterprise (teilweise umgesetzt 2026-02-16)
 ### Admin-Dashboard + Audit-Logs (umgesetzt)

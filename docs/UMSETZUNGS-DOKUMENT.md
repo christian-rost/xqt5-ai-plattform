@@ -63,6 +63,8 @@
 | `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste (+ deployment_name für Azure) |
 | `app_provider_keys` | XQT5 AI Plattform | Verschlüsselte Provider-API-Keys + Azure-Config |
 | `app_audit_logs` | XQT5 AI Plattform | Audit-Log-Einträge |
+| `app_documents` | XQT5 AI Plattform | Hochgeladene Dokumente (PDF/TXT) mit Status |
+| `app_document_chunks` | XQT5 AI Plattform | Dokument-Chunks mit Embeddings (vector(1536)) |
 | `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
 | `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
 | `messages` | llm-council | Pipeline-Nachrichten (stage1/2/3, metadata) |
@@ -85,7 +87,8 @@
    - Domain: `ai-hub.xqtfive.com`
    - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 4. `CORS_ORIGINS` im Backend auf Frontend-Domain setzen
-5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_d)
+5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_c_rag + phase_d)
+   - **Wichtig**: pgvector Extension muss vor der RAG-Migration aktiviert sein (Dashboard → Database → Extensions → vector)
 
 ### Phase B: User & Kosten-Management (2026-02-15)
 1. **Eigene User-Tabelle** (`app_users`):
@@ -220,8 +223,47 @@
    - Deployment-Name Feld in Modell-Konfiguration
    - `api.js`: 4 neue Admin-API-Methoden (GET/PUT/DELETE/POST Provider)
 
+### Phase C Schritt 2: File Upload + RAG-Pipeline (2026-02-16)
+1. **Datenbank-Migration** (`supabase/migrations/20260216_phase_c_rag.sql`):
+   - `CREATE EXTENSION IF NOT EXISTS vector` (pgvector)
+   - `app_documents` Tabelle (user_id, chat_id nullable, filename, file_type, file_size_bytes, extracted_text, chunk_count, status, error_message)
+   - `app_document_chunks` Tabelle (document_id, chunk_index, content, token_count, embedding vector(1536))
+   - HNSW-Index auf embedding (vector_cosine_ops)
+   - RPC `match_document_chunks()`: Sucht Chat-Dokumente + globale Dokumente des Users nach Similarity
+2. **Documents-Modul** (`backend/app/documents.py`):
+   - `extract_text()`: PDF via pypdf, TXT via UTF-8
+   - CRUD: `create_document()`, `update_document_status()`, `list_documents()`, `get_document()`, `delete_document()`
+   - `has_ready_documents()`: Quick-Check für RAG-Injection
+3. **RAG-Modul** (`backend/app/rag.py`):
+   - `chunk_text()`: Paragraph-aware Splitting mit konfigurierbarer chunk_size/overlap
+   - `generate_embeddings()`: OpenAI API via httpx, nutzt `providers.get_api_key("openai")`
+   - `process_document()`: Chunk + Embed + Store, Token-Usage-Tracking
+   - `search_similar_chunks()`: Embedding-Generierung + Supabase RPC
+   - `build_rag_context()`: Formatierter Context-String mit Source-Labels
+4. **Config** (`backend/app/config.py`): 7 neue Variablen (EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, CHUNK_SIZE, CHUNK_OVERLAP, RAG_TOP_K, RAG_SIMILARITY_THRESHOLD, MAX_UPLOAD_SIZE_MB)
+5. **Token-Tracking** (`backend/app/token_tracking.py`): Embedding-Kosten (text-embedding-3-small/large)
+6. **API-Endpoints** (`backend/app/main.py`):
+   - `POST /api/documents/upload` — UploadFile + Form(chat_id), extrahiert Text, erzeugt Chunks+Embeddings
+   - `GET /api/documents?chat_id=&scope=` — Dokument-Liste
+   - `DELETE /api/documents/{id}` — Löschen (CASCADE auf Chunks)
+   - `POST /api/rag/search` — Debug/Test-Endpoint für Similarity-Suche
+7. **RAG-Injection** in `send_message()`:
+   - Prüft ob User ready Docs hat, sucht ähnliche Chunks, injiziert als System-Message-Kontext
+   - `rag_sources` Liste wird in Stream-Done-Event und Non-Streaming-Response mitgegeben
+8. **Dependencies**: `pypdf>=4.0.0` in pyproject.toml und Dockerfile
+9. **Frontend-Komponenten**:
+   - `FileUpload.jsx`: Clip-Icon Button mit Hidden File-Input (PDF/TXT)
+   - `DocumentList.jsx`: Dokument-Tags (Icon + Name + Chunks + Status + Delete)
+   - `SourceDisplay.jsx`: "Sources:" Label mit Filename-Tags unter Assistant-Nachrichten
+10. **Frontend-Änderungen**:
+    - `api.js`: `uploadDocument()`, `listDocuments()`, `deleteDocument()`, sources in `onDone`
+    - `MessageInput.jsx`: FileUpload-Button + DocumentList
+    - `MessageBubble.jsx`: SourceDisplay unter Assistant-Nachrichten
+    - `ChatArea.jsx`: Neue Props (documents, onUpload, onDeleteDocument)
+    - `App.jsx`: chatDocuments State, loadDocuments Effect, Upload/Delete Handlers, Sources an Messages
+    - `styles.css`: file-upload, document-list, rag-sources Styles
+
 ## Nächste Umsetzungsschritte
-1. **Phase C Schritt 2**: Datei-Upload, RAG-Pipeline (pgvector, Embeddings, Vektor-Suche)
-2. **Phase D Rest**: Workflow-Engine, SSO (OIDC/SAML)
-3. RLS und Mandantenmodell in Supabase aktivieren
-4. Integrationstests für API und End-to-End-Chat
+1. **Phase D Rest**: Workflow-Engine, SSO (OIDC/SAML)
+2. RLS und Mandantenmodell in Supabase aktivieren
+3. Integrationstests für API und End-to-End-Chat
