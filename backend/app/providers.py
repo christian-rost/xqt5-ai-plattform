@@ -232,10 +232,11 @@ async def _test_azure(api_key: str) -> Dict[str, Any]:
                 return {"success": True, "message": "Verbindung erfolgreich"}
             elif resp.status_code == 401:
                 return {"success": False, "error": "Ungültiger API-Key"}
-            elif resp.status_code == 404:
-                return {"success": False, "error": f"Deployment '{deployment}' nicht gefunden"}
             else:
-                return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+                return {
+                    "success": False,
+                    "error": f"HTTP {resp.status_code} für {url[:120]}... — {resp.text[:300]}",
+                }
     except httpx.TimeoutException:
         return {"success": False, "error": "Timeout bei der Verbindung"}
     except Exception as e:
