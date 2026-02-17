@@ -669,7 +669,7 @@ async def upload_document(
 
     # Extract text
     try:
-        extracted_text = documents_mod.extract_text(file.filename, file_bytes)
+        extracted_text = await documents_mod.extract_text(file.filename, file_bytes)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
 

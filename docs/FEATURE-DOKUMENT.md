@@ -43,7 +43,7 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 7. Template-Manager-Modal
 ### Schritt 2: File Upload + RAG-Pipeline (umgesetzt 2026-02-16)
 1. Datei-Upload (PDF, TXT) pro Chat oder als globale Wissensbasis
-2. Text-Extraktion via pypdf (PDF) / UTF-8 (TXT)
+2. Text-Extraktion via pypdf (PDF) / UTF-8 (TXT), OCR-Fallback via Mistral OCR API für gescannte PDFs
 3. Paragraph-aware Chunking mit konfigurierbarer Größe und Overlap
 4. OpenAI Embeddings (text-embedding-3-small, 1536 Dimensionen)
 5. pgvector HNSW-Index für schnelle Cosine-Similarity-Suche

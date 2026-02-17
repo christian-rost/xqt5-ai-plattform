@@ -233,7 +233,11 @@
    - HNSW-Index auf embedding (vector_cosine_ops)
    - RPC `match_document_chunks()`: Sucht Chat-Dokumente + globale Dokumente des Users nach Similarity
 2. **Documents-Modul** (`backend/app/documents.py`):
-   - `extract_text()`: PDF via pypdf, TXT via UTF-8
+   - `extract_text()` (async): PDF via pypdf, TXT via UTF-8
+   - **OCR-Fallback**: Wenn pypdf < 50 Zeichen extrahiert (gescannte PDFs), wird `_ocr_pdf_mistral()` aufgerufen
+   - `_ocr_pdf_mistral()`: Sendet PDF als base64 data-URI an Mistral OCR API (`mistral-ocr-latest`), gibt Markdown zurück
+   - Mistral API-Key via `providers.get_api_key("mistral")` (DB mit Env-Fallback)
+   - Keine zusätzlichen System-Pakete nötig (kein Tesseract/Poppler)
    - CRUD: `create_document()`, `update_document_status()`, `list_documents()`, `get_document()`, `delete_document()`
    - `has_ready_documents()`: Quick-Check für RAG-Injection
 3. **RAG-Modul** (`backend/app/rag.py`):
