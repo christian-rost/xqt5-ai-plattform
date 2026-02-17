@@ -82,12 +82,14 @@
    - Provider Keys: `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.
    - Azure: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_API_VERSION` (default: 2025-04-01-preview)
    - Defaults: `DEFAULT_MODEL`, `DEFAULT_TEMPERATURE`
+   - Rate Limiting: `RATE_LIMIT_STORAGE_URL` (Default: `memory://`, Prod: `redis://redis:6379`)
+   - Proxy: `FORWARDED_ALLOW_IPS` (Default: `*`)
 3. Frontend-Service erstellen:
    - Build Context: `frontend`, Dockerfile: `frontend/Dockerfile`
    - Domain: `ai-hub.xqtfive.com`
    - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 4. `CORS_ORIGINS` im Backend auf Frontend-Domain setzen
-5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_c_rag + phase_d)
+5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_c_rag + phase_d + phase_d_token_version_revocation)
    - **Wichtig**: pgvector Extension muss vor der RAG-Migration aktiviert sein (Dashboard → Database → Extensions → vector)
 
 ### Phase B: User & Kosten-Management (2026-02-15)
@@ -262,6 +264,33 @@
     - `ChatArea.jsx`: Neue Props (documents, onUpload, onDeleteDocument)
     - `App.jsx`: chatDocuments State, loadDocuments Effect, Upload/Delete Handlers, Sources an Messages
     - `styles.css`: file-upload, document-list, rag-sources Styles
+
+### Phase D Erweiterung 2: Security Hardening (2026-02-17)
+1. **is_active Enforcement** auf Access- UND Refresh-Token:
+   - `get_current_user()` prüft `is_active` bei jedem Request
+   - Refresh-Endpoint prüft `is_active` vor Token-Erneuerung
+   - Fehlermeldung: "Account is inactive"
+2. **Token Version Revocation** (`token_version` Spalte in `app_users`):
+   - Migration: `supabase/migrations/20260217_phase_d_token_version_revocation.sql`
+   - `bump_token_version()` in `auth.py` erhöht die Version → alle bestehenden Tokens ungültig
+   - Access- und Refresh-Token enthalten `token_version` Claim, wird bei Validierung geprüft
+   - Wird automatisch bei User-Deaktivierung (`PATCH /api/admin/users/{id}` mit `is_active=false`) aufgerufen
+3. **slowapi Rate Limiting** (7 Endpoints):
+   - `POST /api/auth/register` — 5/minute
+   - `POST /api/auth/login` — 10/minute
+   - `POST /api/auth/refresh` — 30/minute
+   - `POST /api/conversations/{id}/message` — 60/minute
+   - `POST /api/documents/upload` — 20/minute
+   - `POST /api/rag/search` — 60/minute
+   - `POST /api/admin/providers/{provider}/test` — 20/minute
+   - Key-Funktion: per-User (`user:<uuid>`) bei gültigem Bearer-Token, Fallback `ip:<address>`
+4. **Redis-Backend** via `RATE_LIMIT_STORAGE_URL` Env-Variable:
+   - Default: `memory://` (In-Process, kein Redis nötig)
+   - Produktion: `redis://redis:6379` für persistente Limits über Restarts
+5. **Proxy-Headers** für korrekte Client-IP hinter Reverse-Proxy:
+   - Uvicorn CMD: `--proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-*}"`
+   - Env-Variable `FORWARDED_ALLOW_IPS` (Default: `*`)
+6. **Dependencies**: `slowapi>=0.1.9`, `redis>=5.0.0` in pyproject.toml + Dockerfile
 
 ## Nächste Umsetzungsschritte
 1. **Phase D Rest**: Workflow-Engine, SSO (OIDC/SAML)

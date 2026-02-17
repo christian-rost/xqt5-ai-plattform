@@ -66,6 +66,12 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 3. Azure OpenAI als LLM-Provider (Deployment-Name Lookup, GPT-5.x Handling)
 4. Azure-spezifische Konfiguration (Endpoint-URL, API-Version) in DB und UI
 5. Deployment-Name Spalte in Modell-Konfiguration für Azure-Modelle
+### Security Hardening (umgesetzt 2026-02-17)
+1. Rate Limiting pro Endpoint (per-User bei gültigem Token, per-IP als Fallback)
+2. Redis-backed Rate Limit Storage (Fallback: In-Memory)
+3. Token Version Revocation für sofortige Session-Invalidierung bei User-Deaktivierung
+4. is_active Prüfung auf allen Auth-Flows (Access-Token UND Refresh-Token)
+5. Proxy-Header-Konfiguration für korrekte IP-Erkennung hinter Reverse-Proxy
 ### Noch geplant
 1. Workflow-Engine für automatisierte Abläufe
 2. SSO (OIDC/SAML)

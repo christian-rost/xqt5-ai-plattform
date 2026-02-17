@@ -66,9 +66,15 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **Hinweis: Supabase RPC `match_document_chunks` benötigt pgvector-Operatoren.**
   Die Funktion nutzt `<=>` (Cosine Distance). Ohne pgvector Extension schlägt die Suche fehl.
 
+### 2026-02-17 (Security Hardening)
+- **Rate Limiting mit slowapi + Redis**: 7 kritische Endpoints mit per-User/per-IP Limits versehen (Register 5/min, Login 10/min, Refresh 30/min, Message 60/min, Upload 20/min, RAG-Search 60/min, Provider-Test 20/min). Fallback auf In-Memory wenn kein Redis konfiguriert.
+- **Token Version Revocation**: Neue `token_version` Spalte in `app_users`. Bei User-Deaktivierung wird `bump_token_version()` aufgerufen, alle bestehenden Tokens werden sofort ungültig. Access- und Refresh-Token prüfen `token_version` bei jeder Validierung.
+- **is_active Enforcement auf Refresh**: Deaktivierte User können nicht nur keine neuen Access-Tokens nutzen, sondern auch kein Refresh durchführen. Fehlermeldung: "Account is inactive".
+- **Proxy-Headers**: Uvicorn mit `--proxy-headers` und `FORWARDED_ALLOW_IPS` für korrekte IP-Erkennung hinter Coolify-Proxy.
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
-2. Kein Rate-Limiting auf LLM-Endpoints — authentifizierte User können unbegrenzt Kosten verursachen.
+2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).
 3. Provider-API-Keys in DB sind Fernet-verschlüsselt mit von JWT_SECRET abgeleitetem Key — bei JWT_SECRET-Rotation werden alle gespeicherten Keys unlesbar.
 
 ## Präventionsmaßnahmen
@@ -79,3 +85,4 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 5. **Python-Version im Docker-Image prüfen** bevor neue Syntax-Features verwendet werden (aktuell: 3.11).
 6. **Bei neuen Tabellen: kein Copy-Paste aus altem Storage-Code** ohne Feldprüfung.
 7. **Azure-Modelle immer mit `deployment_name` in `app_model_config` anlegen.**
+8. **Token-Invalidierung**: Bei sicherheitskritischen User-Änderungen (Deaktivierung, Passwort-Reset) immer `bump_token_version()` aufrufen, damit alle bestehenden Tokens sofort ungültig werden.
