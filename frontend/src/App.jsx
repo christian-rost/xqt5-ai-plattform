@@ -357,7 +357,7 @@ export default function App() {
         onLogout={handleLogout}
       />
       {showAdmin ? (
-        <AdminDashboard onClose={() => setShowAdmin(false)} />
+        <AdminDashboard onClose={() => setShowAdmin(false)} currentUser={user} />
       ) : (
         <ChatArea
           conversation={activeConversation}

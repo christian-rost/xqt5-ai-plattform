@@ -795,6 +795,26 @@ async def admin_update_user(
     return result
 
 
+@app.delete("/api/admin/users/{user_id}", response_model=None)
+async def admin_delete_user(
+    user_id: str,
+    admin: Dict = Depends(get_current_admin),
+):
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    result = admin_crud.update_user(user_id, is_active=False)
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+    bump_token_version(user_id)
+    audit.log_event(
+        audit.ADMIN_USER_DEACTIVATE,
+        user_id=admin["id"],
+        target_type="user",
+        target_id=user_id,
+    )
+    return {"deleted": True}
+
+
 @app.get("/api/admin/usage", response_model=None)
 async def admin_get_usage(
     start_date: Optional[str] = None,

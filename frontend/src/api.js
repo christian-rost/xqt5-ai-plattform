@@ -272,6 +272,17 @@ export const api = {
     return response.json()
   },
 
+  async adminDeleteUser(userId) {
+    const response = await authFetch(`${API_BASE}/api/admin/users/${userId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Benutzer nicht löschen')
+    }
+    return response.json()
+  },
+
   async adminGetUsage(startDate, endDate) {
     const params = new URLSearchParams()
     if (startDate) params.set('start_date', startDate)

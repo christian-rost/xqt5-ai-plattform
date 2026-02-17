@@ -10,7 +10,7 @@ const TABS = [
   { id: 'audit', label: 'Audit-Logs' },
 ]
 
-export default function AdminDashboard({ onClose }) {
+export default function AdminDashboard({ onClose, currentUser }) {
   const [activeTab, setActiveTab] = useState('users')
 
   return (
@@ -35,7 +35,7 @@ export default function AdminDashboard({ onClose }) {
       </div>
 
       <div className="admin-content">
-        {activeTab === 'users' && <UsersTab />}
+        {activeTab === 'users' && <UsersTab currentUser={currentUser} />}
         {activeTab === 'costs' && <CostsTab />}
         {activeTab === 'stats' && <StatsTab />}
         {activeTab === 'models' && <ModelsTab />}
@@ -46,10 +46,11 @@ export default function AdminDashboard({ onClose }) {
   )
 }
 
-function UsersTab() {
+function UsersTab({ currentUser }) {
   const [users, setUsers] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
 
   useEffect(() => {
     loadUsers()
@@ -76,11 +77,32 @@ function UsersTab() {
     }
   }
 
+  async function handleDelete(userId, username) {
+    if (!confirm(`Benutzer "${username}" wirklich löschen (deaktivieren)?`)) return
+    setError('')
+    try {
+      await api.adminDeleteUser(userId)
+      await loadUsers()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   if (loading) return <div className="admin-loading">Laden...</div>
+
+  const filteredUsers = showInactive ? users : users.filter((u) => u.is_active)
 
   return (
     <div>
       {error && <div className="admin-error">{error}</div>}
+      <label className="form-checkbox" style={{ marginBottom: 16 }}>
+        <input
+          type="checkbox"
+          checked={showInactive}
+          onChange={() => setShowInactive(!showInactive)}
+        />
+        Deaktivierte anzeigen
+      </label>
       <table className="admin-table">
         <thead>
           <tr>
@@ -89,11 +111,12 @@ function UsersTab() {
             <th>Registriert</th>
             <th>Aktiv</th>
             <th>Admin</th>
+            <th>Aktionen</th>
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
+          {filteredUsers.map((u) => (
+            <tr key={u.id} className={!u.is_active ? 'user-inactive' : ''}>
               <td>{u.username}</td>
               <td>{u.email}</td>
               <td>{new Date(u.created_at).toLocaleDateString('de-DE')}</td>
@@ -116,6 +139,15 @@ function UsersTab() {
                   />
                   <span className="toggle-slider"></span>
                 </label>
+              </td>
+              <td>
+                <button
+                  className="btn btn-danger btn-small"
+                  disabled={currentUser && u.id === currentUser.id}
+                  onClick={() => handleDelete(u.id, u.username)}
+                >
+                  Löschen
+                </button>
               </td>
             </tr>
           ))}

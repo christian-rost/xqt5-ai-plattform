@@ -1255,6 +1255,10 @@ body {
   border-radius: 4px;
 }
 
+.admin-table tr.user-inactive td {
+  opacity: 0.5;
+}
+
 .admin-empty-cell {
   text-align: center;
   color: var(--color-gray);
