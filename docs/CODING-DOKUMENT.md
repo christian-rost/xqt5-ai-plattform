@@ -86,6 +86,13 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   Ursache: Frontend hatte `const DEFAULT_MODEL = 'google/gemini-3-pro-preview'` hardcoded. Die `is_default`-Einstellung aus `app_model_config` wurde weder von der `/api/models`-API zurückgegeben noch vom Frontend abgefragt.
   Korrektur: `get_available_models()` gibt jetzt `is_default` mit. Frontend sucht zuerst ein `is_default && available` Modell, Fallback auf erstes verfügbares. **Regel: Admin-konfigurierbare Defaults immer aus der DB lesen, nie im Frontend hardcoden.**
 
+- **Fehler: Default-Modell griff trotz Fix nicht bei neuen Chats (Frontend + Backend).**
+  Ursache (Backend): `send_message()` nutzte `DEFAULT_MODEL` env-var als Fallback, ohne die DB nach `is_default` zu fragen.
+  Ursache (Frontend): Bei "New Conversation" wurde `selectedModel` nicht auf den DB-Default zurückgesetzt. Neue Conversations haben `model=null`, das useEffect ignorierte diesen Fall und behielt den vorherigen Wert bei.
+  Korrektur (Backend): Neue Funktion `admin.get_default_model_id()` liest `is_default=true && is_enabled=true` aus `app_model_config`. In `send_message()` wird diese vor `DEFAULT_MODEL` abgefragt.
+  Korrektur (Frontend): Neuer State `defaultModelId` speichert das API-Default-Modell. Bei Conversation-Wechsel wird `selectedModel` immer gesetzt: `activeConversation.model || defaultModelId`.
+  **Regel: Fallback-Ketten immer End-to-End durchdenken — sowohl Frontend-UI als auch Backend-Verarbeitung müssen den DB-Default kennen.**
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).

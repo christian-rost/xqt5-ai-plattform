@@ -307,10 +307,13 @@
    - "Löschen"-Button pro Zeile (rot, disabled für eigenen User, `confirm()` Dialog)
    - Deaktivierte Zeilen: CSS-Klasse `.user-inactive` für graue Darstellung
    - `currentUser` Prop von `App.jsx` durchgereicht für Selbstschutz
-3. **Default-Modell Bugfix** (`llm.py` + `App.jsx`):
-   - `/api/models` gibt jetzt `is_default` Flag aus `app_model_config` zurück
+3. **Default-Modell Bugfix** (`llm.py` + `App.jsx` + `admin.py` + `main.py`):
+   - `/api/models` gibt jetzt `is_default` Flag aus `app_model_config` zurück (auch im Fallback-Pfad)
    - Frontend wählt beim Laden das `is_default && available` Modell statt hardcoded Fallback
    - Hardcoded `DEFAULT_MODEL` in `FALLBACK_MODEL` umbenannt (nur noch als letzter Fallback)
+   - Neuer State `defaultModelId` im Frontend: wird bei Conversation-Wechsel als Fallback genutzt (`activeConversation.model || defaultModelId`)
+   - Backend: Neue Funktion `admin.get_default_model_id()` liest `is_default && is_enabled` aus DB
+   - Backend: `send_message()` Fallback-Kette erweitert: `payload.model → conversation.model → assistant.model → admin.get_default_model_id() → DEFAULT_MODEL`
 4. **API** (`api.js`): Neue Methode `adminDeleteUser(userId)` → `DELETE /api/admin/users/${userId}`
 
 ## Nächste Umsetzungsschritte
