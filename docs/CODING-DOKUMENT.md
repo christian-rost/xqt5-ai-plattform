@@ -72,6 +72,13 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **is_active Enforcement auf Refresh**: Deaktivierte User können nicht nur keine neuen Access-Tokens nutzen, sondern auch kein Refresh durchführen. Fehlermeldung: "Account is inactive".
 - **Proxy-Headers**: Uvicorn mit `--proxy-headers` und `FORWARDED_ALLOW_IPS` für korrekte IP-Erkennung hinter Coolify-Proxy.
 
+### 2026-02-17 (OCR für gescannte PDFs)
+- **OCR-Fallback via Mistral OCR API**: `extract_text()` ist jetzt `async`. Wenn pypdf weniger als 50 Zeichen aus einem PDF extrahiert (typisch für gescannte PDFs ohne Text-Layer), wird `_ocr_pdf_mistral()` aufgerufen.
+- **Mistral OCR API**: `POST https://api.mistral.ai/v1/ocr` mit `mistral-ocr-latest` Modell. PDF wird als base64 data-URI gesendet, Antwort enthält Markdown pro Seite.
+- **API-Key**: Via `providers.get_api_key("mistral")` (DB mit Env-Fallback). Ohne Key gibt es eine klare Fehlermeldung.
+- **Keine System-Pakete**: Kein Tesseract/Poppler im Docker nötig — rein API-basiert.
+- **Timeout**: 120s für große PDFs (httpx AsyncClient).
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).
