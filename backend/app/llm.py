@@ -102,7 +102,7 @@ def get_available_models() -> List[Dict[str, Any]]:
     result = []
     for model in AVAILABLE_MODELS:
         available = bool(_provider_get_api_key(model["provider"]))
-        result.append({**model, "available": available})
+        result.append({**model, "available": available, "is_default": model["id"] == "google/gemini-3-pro-preview"})
     return result
 
 

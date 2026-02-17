@@ -342,7 +342,7 @@ async def send_message(
             system_prompt = assistant.get("system_prompt")
 
     # Determine model and temperature: message-level > conversation-level > assistant > default
-    model = payload.model or conversation.get("model") or (assistant.get("model") if assistant else None) or DEFAULT_MODEL
+    model = payload.model or conversation.get("model") or (assistant.get("model") if assistant else None) or admin_crud.get_default_model_id() or DEFAULT_MODEL
     temperature = payload.temperature if payload.temperature is not None else (
         conversation.get("temperature") if conversation.get("temperature") is not None else (
             assistant.get("temperature") if assistant and assistant.get("temperature") is not None else DEFAULT_TEMPERATURE

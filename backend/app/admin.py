@@ -195,6 +195,19 @@ def update_model_config(config_id: str, **fields: Any) -> Optional[Dict[str, Any
     return result.data[0]
 
 
+def get_default_model_id() -> Optional[str]:
+    """Return the model_id marked as default in app_model_config, or None."""
+    try:
+        result = supabase.table("app_model_config").select("model_id").eq(
+            "is_default", True
+        ).eq("is_enabled", True).limit(1).execute()
+        if result.data:
+            return result.data[0]["model_id"]
+    except Exception:
+        logger.warning("Failed to load default model from DB")
+    return None
+
+
 def delete_model_config(config_id: str) -> bool:
     result = supabase.table("app_model_config").delete().eq("id", config_id).execute()
     return len(result.data) > 0
