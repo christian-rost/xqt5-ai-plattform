@@ -22,7 +22,13 @@ from .auth import (
     get_user_by_id,
     register_user,
 )
-from .config import CORS_ORIGINS_LIST, DEFAULT_MODEL, DEFAULT_TEMPERATURE, MAX_UPLOAD_SIZE_MB
+from .config import (
+    CORS_ORIGINS_LIST,
+    DEFAULT_MODEL,
+    DEFAULT_TEMPERATURE,
+    MAX_UPLOAD_SIZE_MB,
+    RATE_LIMIT_STORAGE_URL,
+)
 from .llm import call_llm, get_available_models, LLMError, parse_model_string, stream_llm
 from .models import (
     CreateAssistantRequest,
@@ -68,7 +74,7 @@ def _rate_limit_key(request: Request) -> str:
     return f"ip:{get_remote_address(request)}"
 
 
-limiter = Limiter(key_func=_rate_limit_key)
+limiter = Limiter(key_func=_rate_limit_key, storage_uri=RATE_LIMIT_STORAGE_URL)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
