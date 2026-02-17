@@ -89,6 +89,7 @@ def get_available_models() -> List[Dict[str, Any]]:
                     "provider": row["provider"],
                     "name": row["display_name"],
                     "available": available,
+                    "is_default": bool(row.get("is_default")),
                 }
                 if row.get("deployment_name"):
                     entry["deployment_name"] = row["deployment_name"]

@@ -7,7 +7,7 @@ import AdminDashboard from './components/AdminDashboard'
 import AssistantManager from './components/AssistantManager'
 import TemplateManager from './components/TemplateManager'
 
-const DEFAULT_MODEL = 'google/gemini-3-pro-preview'
+const FALLBACK_MODEL = 'google/gemini-3-pro-preview'
 const DEFAULT_TEMPERATURE = 0.7
 
 export default function App() {
@@ -18,7 +18,7 @@ export default function App() {
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
   const [models, setModels] = useState([])
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
+  const [selectedModel, setSelectedModel] = useState(FALLBACK_MODEL)
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState(null)
@@ -48,7 +48,8 @@ export default function App() {
   useEffect(() => {
     api.listModels().then((data) => {
       setModels(data)
-      const firstAvailable = data.find((m) => m.available)
+      const defaultModel = data.find((m) => m.is_default && m.available)
+      const firstAvailable = defaultModel || data.find((m) => m.available)
       if (firstAvailable) setSelectedModel(firstAvailable.id)
     }).catch(() => {})
   }, [])
