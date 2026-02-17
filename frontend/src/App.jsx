@@ -45,13 +45,17 @@ export default function App() {
   }, [])
 
   // Load models (public endpoint)
-  useEffect(() => {
+  const loadModels = useCallback(() => {
     api.listModels().then((data) => {
       setModels(data)
       const defaultModel = data.find((m) => m.is_default && m.available)
       const firstAvailable = defaultModel || data.find((m) => m.available)
       if (firstAvailable) setSelectedModel(firstAvailable.id)
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    loadModels()
   }, [])
 
   const loadUsage = useCallback(async () => {
@@ -358,7 +362,7 @@ export default function App() {
         onLogout={handleLogout}
       />
       {showAdmin ? (
-        <AdminDashboard onClose={() => setShowAdmin(false)} currentUser={user} />
+        <AdminDashboard onClose={() => { setShowAdmin(false); loadModels() }} currentUser={user} />
       ) : (
         <ChatArea
           conversation={activeConversation}
