@@ -416,6 +416,249 @@ export const api = {
     return response.json()
   },
 
+  // ── Pools ──
+  async listPools() {
+    const response = await authFetch(`${API_BASE}/api/pools`)
+    if (!response.ok) throw new Error('Konnte Pools nicht laden')
+    return response.json()
+  },
+
+  async createPool(data) {
+    const response = await authFetch(`${API_BASE}/api/pools`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Pool nicht erstellen')
+    }
+    return response.json()
+  },
+
+  async getPool(poolId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}`)
+    if (!response.ok) throw new Error('Konnte Pool nicht laden')
+    return response.json()
+  },
+
+  async updatePool(poolId, data) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Konnte Pool nicht aktualisieren')
+    return response.json()
+  },
+
+  async deletePool(poolId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Pool nicht löschen')
+    return response.json()
+  },
+
+  // Pool Members
+  async listPoolMembers(poolId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/members`)
+    if (!response.ok) throw new Error('Konnte Mitglieder nicht laden')
+    return response.json()
+  },
+
+  async addPoolMember(poolId, username, role) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, role }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Mitglied nicht hinzufügen')
+    }
+    return response.json()
+  },
+
+  async updatePoolMember(poolId, userId, role) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/members/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    })
+    if (!response.ok) throw new Error('Konnte Rolle nicht ändern')
+    return response.json()
+  },
+
+  async removePoolMember(poolId, userId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/members/${userId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Mitglied nicht entfernen')
+    }
+    return response.json()
+  },
+
+  // Pool Invites
+  async listPoolInvites(poolId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/invites`)
+    if (!response.ok) throw new Error('Konnte Einladungen nicht laden')
+    return response.json()
+  },
+
+  async createPoolInvite(poolId, role, maxUses = null, expiresAt = null) {
+    const body = { role }
+    if (maxUses !== null) body.max_uses = maxUses
+    if (expiresAt !== null) body.expires_at = expiresAt
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/invites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) throw new Error('Konnte Einladung nicht erstellen')
+    return response.json()
+  },
+
+  async revokePoolInvite(poolId, inviteId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/invites/${inviteId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Einladung nicht widerrufen')
+    return response.json()
+  },
+
+  async joinPool(token) {
+    const response = await authFetch(`${API_BASE}/api/pools/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Pool nicht beitreten')
+    }
+    return response.json()
+  },
+
+  // Pool Documents
+  async listPoolDocuments(poolId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents`)
+    if (!response.ok) throw new Error('Konnte Dokumente nicht laden')
+    return response.json()
+  },
+
+  async uploadPoolDocument(poolId, file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Upload fehlgeschlagen')
+    }
+    return response.json()
+  },
+
+  async deletePoolDocument(poolId, documentId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/${documentId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Dokument nicht löschen')
+    return response.json()
+  },
+
+  // Pool Chats
+  async listPoolChats(poolId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats`)
+    if (!response.ok) throw new Error('Konnte Chats nicht laden')
+    return response.json()
+  },
+
+  async createPoolChat(poolId, data) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Konnte Chat nicht erstellen')
+    return response.json()
+  },
+
+  async getPoolChat(poolId, chatId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats/${chatId}`)
+    if (!response.ok) throw new Error('Konnte Chat nicht laden')
+    return response.json()
+  },
+
+  async sendPoolMessage(poolId, chatId, content, model, temperature) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats/${chatId}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, model, temperature, stream: false }),
+    })
+    if (!response.ok) throw new Error('Konnte Nachricht nicht senden')
+    return response.json()
+  },
+
+  async sendPoolMessageStream(poolId, chatId, content, model, temperature, onDelta, onDone, onError) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats/${chatId}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, model, temperature, stream: true }),
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || 'Konnte Nachricht nicht senden')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.error) {
+            onError(data.error)
+            return
+          }
+          if (data.delta) {
+            onDelta(data.delta)
+          }
+          if (data.done) {
+            await onDone(data.content, data.sources || [])
+            return
+          }
+        } catch {
+          // Skip malformed JSON lines
+        }
+      }
+    }
+  },
+
+  async deletePoolChat(poolId, chatId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats/${chatId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Konnte Chat nicht löschen')
+    return response.json()
+  },
+
+  // Streaming (existing)
   async sendMessageStream(id, content, model, temperature, onDelta, onDone, onError) {
     const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',

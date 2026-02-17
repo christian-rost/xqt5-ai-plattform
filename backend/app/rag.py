@@ -141,6 +141,7 @@ async def search_similar_chunks(
     query: str,
     user_id: str,
     chat_id: Optional[str] = None,
+    pool_id: Optional[str] = None,
     top_k: int = RAG_TOP_K,
     threshold: float = RAG_SIMILARITY_THRESHOLD,
 ) -> List[Dict[str, Any]]:
@@ -149,13 +150,17 @@ async def search_similar_chunks(
     embeddings = await generate_embeddings([query])
     query_embedding = embeddings[0]
 
-    result = supabase.rpc("match_document_chunks", {
+    params = {
         "query_embedding": str(query_embedding),
         "match_user_id": user_id,
         "match_chat_id": chat_id,
         "match_threshold": threshold,
         "match_count": top_k,
-    }).execute()
+    }
+    if pool_id:
+        params["match_pool_id"] = pool_id
+
+    result = supabase.rpc("match_document_chunks", params).execute()
 
     return result.data or []
 

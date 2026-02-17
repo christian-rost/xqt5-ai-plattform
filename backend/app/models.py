@@ -132,3 +132,51 @@ class UpdateModelConfigRequest(BaseModel):
     is_default: Optional[bool] = None
     sort_order: Optional[int] = None
     deployment_name: Optional[str] = None
+
+
+# Pool models
+class CreatePoolRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    icon: str = "\U0001f4da"
+    color: str = "#ee7f00"
+
+
+class UpdatePoolRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+
+
+class AddPoolMemberRequest(BaseModel):
+    username: str = Field(min_length=1)
+    role: str = Field(default="viewer", pattern="^(viewer|editor|admin)$")
+
+
+class UpdatePoolMemberRequest(BaseModel):
+    role: str = Field(pattern="^(viewer|editor|admin)$")
+
+
+class CreateInviteLinkRequest(BaseModel):
+    role: str = Field(default="viewer", pattern="^(viewer|editor|admin)$")
+    max_uses: Optional[int] = None
+    expires_at: Optional[str] = None
+
+
+class JoinPoolRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class CreatePoolChatRequest(BaseModel):
+    title: str = Field(default="New Chat", max_length=200)
+    is_shared: bool = False
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+
+
+class SendPoolMessageRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=50000)
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    stream: bool = False

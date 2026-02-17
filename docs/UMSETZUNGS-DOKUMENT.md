@@ -63,8 +63,13 @@
 | `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste (+ deployment_name für Azure) |
 | `app_provider_keys` | XQT5 AI Plattform | Verschlüsselte Provider-API-Keys + Azure-Config |
 | `app_audit_logs` | XQT5 AI Plattform | Audit-Log-Einträge |
-| `app_documents` | XQT5 AI Plattform | Hochgeladene Dokumente (PDF/TXT) mit Status |
+| `app_documents` | XQT5 AI Plattform | Hochgeladene Dokumente (PDF/TXT) mit Status + pool_id |
 | `app_document_chunks` | XQT5 AI Plattform | Dokument-Chunks mit Embeddings (vector(1536)) |
+| `pool_pools` | XQT5 AI Plattform | Pool-Metadaten (name, description, icon, color, owner_id) |
+| `pool_members` | XQT5 AI Plattform | Pool-Mitgliedschaften mit Rolle (viewer/editor/admin) |
+| `pool_invite_links` | XQT5 AI Plattform | Share-Links mit Token, Rolle, max_uses, expires_at |
+| `pool_chats` | XQT5 AI Plattform | Pool-Chats (shared + private via is_shared Flag) |
+| `pool_chat_messages` | XQT5 AI Plattform | Pool-Chat-Nachrichten mit user_id für Attribution |
 | `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
 | `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
 | `messages` | llm-council | Pipeline-Nachrichten (stage1/2/3, metadata) |
@@ -89,7 +94,7 @@
    - Domain: `ai-hub.xqtfive.com`
    - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 4. `CORS_ORIGINS` im Backend auf Frontend-Domain setzen
-5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_c_rag + phase_d + phase_d_token_version_revocation)
+5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_c_rag + phase_d + phase_d_token_version_revocation + pools)
    - **Wichtig**: pgvector Extension muss vor der RAG-Migration aktiviert sein (Dashboard → Database → Extensions → vector)
 
 ### Phase B: User & Kosten-Management (2026-02-15)
@@ -316,7 +321,58 @@
    - Backend: `send_message()` Fallback-Kette erweitert: `payload.model → conversation.model → assistant.model → admin.get_default_model_id() → DEFAULT_MODEL`
 4. **API** (`api.js`): Neue Methode `adminDeleteUser(userId)` → `DELETE /api/admin/users/${userId}`
 
+### Phase E: Pools — Geteilte Dokumentensammlungen (umgesetzt 2026-02-18)
+
+#### Datenbank
+1. **Migration** (`supabase/migrations/20260218_pools.sql`):
+   - `pool_pools` Tabelle (id, name, description, icon, color, owner_id → app_users)
+   - `pool_members` Tabelle (pool_id, user_id, role CHECK viewer/editor/admin, UNIQUE pool_id+user_id)
+   - `pool_invite_links` Tabelle (pool_id, token VARCHAR(64) UNIQUE, role, max_uses, use_count, expires_at, is_active)
+   - `pool_chats` Tabelle (pool_id, title, is_shared, created_by, model, temperature)
+   - `pool_chat_messages` Tabelle (chat_id, user_id, role, content, model)
+   - `app_documents` erweitert: `pool_id UUID REFERENCES pool_pools(id) ON DELETE CASCADE`
+   - `match_document_chunks()` RPC erweitert: neuer Parameter `match_pool_id UUID DEFAULT NULL` — wenn gesetzt, werden nur Pool-Dokumente durchsucht
+
+#### Backend
+2. **Pools-Modul** (`backend/app/pools.py`):
+   - Pool CRUD: `create_pool()`, `list_pools_for_user()`, `get_pool()`, `update_pool()`, `delete_pool()`
+   - Auth: `get_user_pool_role()` → owner/admin/editor/viewer/None, `require_pool_role()` → HTTP 403
+   - Members: `add_member()`, `list_members()`, `update_member_role()`, `remove_member()`, `find_user_by_username()`
+   - Invites: `create_invite_link()`, `get_invite_by_token()`, `use_invite_link()`, `list_invite_links()`, `revoke_invite_link()`
+   - Pool Docs: `list_pool_documents()`, `has_ready_pool_documents()`
+   - Pool Chats: `create_pool_chat()`, `list_pool_chats()`, `get_pool_chat()`, `add_pool_chat_message()`, `delete_pool_chat()`
+3. **Bestehende Module erweitert**:
+   - `documents.py`: `create_document()` bekommt `pool_id` Parameter
+   - `rag.py`: `search_similar_chunks()` bekommt `pool_id` Parameter, wird an RPC weitergegeben
+   - `models.py`: 8 neue Pydantic-Modelle (CreatePoolRequest, AddPoolMemberRequest, CreateInviteLinkRequest, JoinPoolRequest, CreatePoolChatRequest, SendPoolMessageRequest, etc.)
+4. **API-Endpunkte** (`main.py`, ~25 neue Routes):
+   - Pool CRUD: POST/GET/PATCH/DELETE `/api/pools`
+   - Members: GET/POST/PATCH/DELETE `/api/pools/{pool_id}/members`
+   - Invites: GET/POST/DELETE `/api/pools/{pool_id}/invites`, POST `/api/pools/join`
+   - Documents: GET/POST/DELETE `/api/pools/{pool_id}/documents`
+   - Chats: GET/POST/DELETE `/api/pools/{pool_id}/chats`, POST `/api/pools/{pool_id}/chats/{chat_id}/message`
+
+#### Frontend
+5. **API-Client** (`api.js`): ~20 neue Methoden für alle Pool-Endpunkte
+6. **Neue Komponenten** (8 Dateien):
+   - `PoolList.jsx` — Sidebar-Sektion mit Pool-Liste
+   - `CreatePoolDialog.jsx` — Modal: Pool erstellen
+   - `PoolDetail.jsx` — Hauptansicht mit Tabs (Dokumente/Chats/Mitglieder)
+   - `PoolDocuments.jsx` — Dokumentenliste + Upload (nutzt bestehende FileUpload/DocumentList)
+   - `PoolChatList.jsx` — Shared + private Chats
+   - `PoolChatArea.jsx` — Chat-Ansicht (nutzt bestehende MessageBubble/MessageInput/SourceDisplay)
+   - `PoolMembers.jsx` — Mitgliederliste mit Rollen-Management
+   - `PoolShareDialog.jsx` — Invite-Link-Dialog
+7. **App.jsx Änderungen**: Neuer State (pools, activePool, activePoolView, activePoolChat), mutually exclusive mit activeConversation
+8. **Sidebar.jsx**: PoolList-Integration
+
+#### Design-Entscheidungen
+- `app_documents` wird wiederverwendet (statt eigener pool_documents), weil `app_document_chunks` per FK darauf verweist — hält Embedding-Pipeline unverändert
+- `pool_chats`/`pool_chat_messages` sind separate Tabellen (nicht `chats`/`chat_messages`), weil Pool-Chats Multi-User-Zugriff brauchen
+- Owner ist NICHT in `pool_members` — Ownership implizit über `pool_pools.owner_id`
+
 ## Nächste Umsetzungsschritte
-1. **Phase D Rest**: Workflow-Engine, SSO (OIDC/SAML)
-2. RLS und Mandantenmodell in Supabase aktivieren
-3. Integrationstests für API und End-to-End-Chat
+1. **Workflow-Engine** für automatisierte Abläufe
+2. **SSO** (OIDC/SAML)
+3. RLS und Mandantenmodell in Supabase aktivieren
+4. Integrationstests für API und End-to-End-Chat

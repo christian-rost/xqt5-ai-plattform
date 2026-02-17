@@ -93,6 +93,16 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   Korrektur (Frontend): Neuer State `defaultModelId` speichert das API-Default-Modell. Bei Conversation-Wechsel wird `selectedModel` immer gesetzt: `activeConversation.model || defaultModelId`.
   **Regel: Fallback-Ketten immer End-to-End durchdenken — sowohl Frontend-UI als auch Backend-Verarbeitung müssen den DB-Default kennen.**
 
+### 2026-02-18 (Phase E — Pools)
+- **Pools: Geteilte Dokumentensammlungen mit RAG implementiert.**
+  5 neue Tabellen (`pool_pools`, `pool_members`, `pool_invite_links`, `pool_chats`, `pool_chat_messages`), `app_documents` erweitert um `pool_id`, `match_document_chunks()` RPC erweitert um `match_pool_id`.
+- **Neues Backend-Modul** `pools.py`: Pool CRUD, Members, Invite Links, Pool Chats. ~25 neue API-Endpunkte.
+- **8 neue Frontend-Komponenten**: PoolList, CreatePoolDialog, PoolDetail, PoolDocuments, PoolChatList, PoolChatArea, PoolMembers, PoolShareDialog.
+- **Design-Entscheidung**: `app_documents` wiederverwendet statt eigener `pool_documents` Tabelle — hält gesamte Embedding-Pipeline (Chunking, Embedding, Search) unverändert.
+- **Design-Entscheidung**: Owner ist NICHT in `pool_members` — Ownership implizit über `pool_pools.owner_id`. Vereinfacht Ownership-Transfer und verhindert Inkonsistenzen.
+- **Design-Entscheidung**: Pool-Chats sind separate Tabellen (`pool_chats`/`pool_chat_messages`), nicht die bestehenden `chats`/`chat_messages`, weil Pool-Chats Multi-User-Zugriff mit Username-Attribution brauchen.
+- **Berechtigungsmodell**: 4 Stufen — Viewer (lesen + fragen), Editor (+ Dokumente), Admin (+ Mitglieder), Owner (implizit, Pool löschen). Role-Check via `require_pool_role()`.
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).

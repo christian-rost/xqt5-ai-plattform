@@ -1,5 +1,6 @@
 import UsageWidget from './UsageWidget'
 import AssistantSelector from './AssistantSelector'
+import PoolList from './PoolList'
 
 export default function Sidebar({
   user,
@@ -9,6 +10,8 @@ export default function Sidebar({
   loading,
   assistants,
   showAdmin,
+  pools,
+  activePoolId,
   onCreateConversation,
   onOpenConversation,
   onDeleteConversation,
@@ -17,6 +20,9 @@ export default function Sidebar({
   onManageTemplates,
   onAdmin,
   onLogout,
+  onSelectPool,
+  onCreatePool,
+  onJoinPool,
 }) {
   return (
     <aside className="sidebar">
@@ -37,6 +43,14 @@ export default function Sidebar({
       </button>
 
       <AssistantSelector assistants={assistants} onSelect={onSelectAssistant} />
+
+      <PoolList
+        pools={pools || []}
+        activePoolId={activePoolId}
+        onSelectPool={onSelectPool}
+        onCreatePool={onCreatePool}
+        onJoinPool={onJoinPool}
+      />
 
       <div className="conversation-list">
         {conversations.length === 0 ? (

@@ -77,6 +77,36 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 2. Selbstschutz: Admin kann sich nicht selbst löschen
 3. Deaktivierte User standardmäßig ausgeblendet, mit Toggle einblendbar (grau dargestellt)
 4. Default-Modell aus DB (`is_default` in `app_model_config`) wird jetzt vom Frontend respektiert
-### Noch geplant
+## Phase E: Pools — Geteilte Dokumentensammlungen (umgesetzt 2026-02-18)
+Pools sind geteilte Dokumentensammlungen (vergleichbar mit Google NotebookLM), in denen mehrere Nutzer Dokumente ablegen und per Chat RAG-gestützte Fragen dazu stellen können.
+
+### Kernfeatures
+1. Pool erstellen mit Name, Beschreibung, Icon und Farbe
+2. Dokumente in Pool hochladen (PDF, TXT) — Chunking + Embedding wie bei bestehender RAG-Pipeline
+3. 3-stufiges Berechtigungsmodell: Viewer (lesen + fragen), Editor (+ Dokumente verwalten), Admin (+ Mitglieder verwalten), Owner (implizit, immer Admin)
+4. Mitglieder einladen per Username (Admin+)
+5. Share-Link generieren mit Rolle und optionalem Limit (max Uses, Ablaufdatum)
+6. Shared Pool-Chat: Alle Mitglieder sehen denselben Chatverlauf mit RAG-Kontext
+7. Private Pool-Chats: Jeder Nutzer kann eigene private Chats gegen Pool-Dokumente führen
+8. RAG-Suche auf Pool-Scope (nur Dokumente des Pools, nicht des Users)
+9. Source-Attribution in Pool-Chats
+
+### Neue Tabellen
+- `pool_pools` — Pool-Metadaten + owner_id
+- `pool_members` — Mitgliedschaften mit Rolle (UNIQUE pool_id + user_id)
+- `pool_invite_links` — Share-Links mit Token, Rolle, max_uses, expires_at
+- `pool_chats` — Chats (shared + private via is_shared Flag)
+- `pool_chat_messages` — Nachrichten mit user_id
+- `app_documents` erweitert um `pool_id` Spalte
+
+### Neue Backend-Module
+- `pools.py` — Pool CRUD, Members, Invites, Chats
+- ~25 neue API-Endpunkte unter `/api/pools/...`
+
+### Neue Frontend-Komponenten
+- PoolList, CreatePoolDialog, PoolDetail (Tabs: Dokumente/Chats/Mitglieder)
+- PoolDocuments, PoolChatList, PoolChatArea, PoolMembers, PoolShareDialog
+
+## Noch geplant
 1. Workflow-Engine für automatisierte Abläufe
 2. SSO (OIDC/SAML)

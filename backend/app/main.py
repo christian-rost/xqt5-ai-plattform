@@ -31,17 +31,25 @@ from .config import (
 )
 from .llm import call_llm, get_available_models, LLMError, parse_model_string, stream_llm
 from .models import (
+    AddPoolMemberRequest,
     CreateAssistantRequest,
     CreateConversationRequest,
+    CreateInviteLinkRequest,
     CreateModelConfigRequest,
+    CreatePoolChatRequest,
+    CreatePoolRequest,
     CreateTemplateRequest,
+    JoinPoolRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
     SendMessageRequest,
+    SendPoolMessageRequest,
     UpdateAssistantRequest,
     UpdateConversationRequest,
     UpdateModelConfigRequest,
+    UpdatePoolMemberRequest,
+    UpdatePoolRequest,
     UpdateTemplateRequest,
     UpdateUserRequest,
 )
@@ -49,6 +57,7 @@ from . import admin as admin_crud
 from . import assistants as assistants_crud
 from . import audit
 from . import documents as documents_mod
+from . import pools as pools_mod
 from . import providers as providers_mod
 from . import rag as rag_mod
 from . import storage
@@ -974,3 +983,484 @@ async def admin_get_audit_logs(
         action_filter=action,
         user_id_filter=user_id,
     )
+
+
+# ── Pool Endpoints ──
+
+
+@app.post("/api/pools", response_model=None)
+async def create_pool(
+    payload: CreatePoolRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    pool = pools_mod.create_pool(
+        owner_id=current_user["id"],
+        name=payload.name,
+        description=payload.description,
+        icon=payload.icon,
+        color=payload.color,
+    )
+    pool["role"] = "owner"
+    return pool
+
+
+@app.get("/api/pools", response_model=None)
+async def list_pools(current_user: Dict = Depends(get_current_user)):
+    return pools_mod.list_pools_for_user(current_user["id"])
+
+
+@app.get("/api/pools/{pool_id}", response_model=None)
+async def get_pool(
+    pool_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    role = pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    pool = pools_mod.get_pool(pool_id)
+    if not pool:
+        raise HTTPException(status_code=404, detail="Pool not found")
+    pool["role"] = role
+    return pool
+
+
+@app.patch("/api/pools/{pool_id}", response_model=None)
+async def update_pool(
+    pool_id: str,
+    payload: UpdatePoolRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    updates = payload.model_dump(exclude_none=True)
+    result = pools_mod.update_pool(pool_id, **updates)
+    if not result:
+        raise HTTPException(status_code=404, detail="Pool not found")
+    return result
+
+
+@app.delete("/api/pools/{pool_id}", response_model=None)
+async def delete_pool(
+    pool_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    role = pools_mod.get_user_pool_role(pool_id, current_user["id"])
+    if role != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can delete a pool")
+    pools_mod.delete_pool(pool_id)
+    return {"deleted": True}
+
+
+# ── Pool Members ──
+
+
+@app.get("/api/pools/{pool_id}/members", response_model=None)
+async def list_pool_members(
+    pool_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    return pools_mod.list_members(pool_id)
+
+
+@app.post("/api/pools/{pool_id}/members", response_model=None)
+async def add_pool_member(
+    pool_id: str,
+    payload: AddPoolMemberRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    target_user = pools_mod.find_user_by_username(payload.username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Check if already member or owner
+    existing_role = pools_mod.get_user_pool_role(pool_id, target_user["id"])
+    if existing_role:
+        raise HTTPException(status_code=409, detail="User is already a member")
+    pools_mod.add_member(pool_id, target_user["id"], payload.role)
+    return pools_mod.list_members(pool_id)
+
+
+@app.patch("/api/pools/{pool_id}/members/{user_id}", response_model=None)
+async def update_pool_member(
+    pool_id: str,
+    user_id: str,
+    payload: UpdatePoolMemberRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    # Cannot change owner role
+    pool = pools_mod.get_pool(pool_id)
+    if pool and pool["owner_id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot change owner role")
+    result = pools_mod.update_member_role(pool_id, user_id, payload.role)
+    if not result:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return pools_mod.list_members(pool_id)
+
+
+@app.delete("/api/pools/{pool_id}/members/{user_id}", response_model=None)
+async def remove_pool_member(
+    pool_id: str,
+    user_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    # Self-leave is allowed for any member
+    if user_id == current_user["id"]:
+        role = pools_mod.get_user_pool_role(pool_id, current_user["id"])
+        if role == "owner":
+            raise HTTPException(status_code=400, detail="Owner cannot leave the pool")
+        pools_mod.remove_member(pool_id, user_id)
+        return {"removed": True}
+    # Otherwise need admin+
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    pool = pools_mod.get_pool(pool_id)
+    if pool and pool["owner_id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot remove the owner")
+    removed = pools_mod.remove_member(pool_id, user_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return {"removed": True}
+
+
+# ── Pool Invite Links ──
+
+
+@app.get("/api/pools/{pool_id}/invites", response_model=None)
+async def list_pool_invites(
+    pool_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    return pools_mod.list_invite_links(pool_id)
+
+
+@app.post("/api/pools/{pool_id}/invites", response_model=None)
+async def create_pool_invite(
+    pool_id: str,
+    payload: CreateInviteLinkRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    return pools_mod.create_invite_link(
+        pool_id=pool_id,
+        created_by=current_user["id"],
+        role=payload.role,
+        max_uses=payload.max_uses,
+        expires_at=payload.expires_at,
+    )
+
+
+@app.delete("/api/pools/{pool_id}/invites/{invite_id}", response_model=None)
+async def revoke_pool_invite(
+    pool_id: str,
+    invite_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    revoked = pools_mod.revoke_invite_link(invite_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    return {"revoked": True}
+
+
+@app.post("/api/pools/join", response_model=None)
+async def join_pool(
+    payload: JoinPoolRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    invite = pools_mod.get_invite_by_token(payload.token)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite link")
+    pool = pools_mod.use_invite_link(invite["id"], current_user["id"])
+    return pool
+
+
+# ── Pool Documents ──
+
+
+@app.get("/api/pools/{pool_id}/documents", response_model=None)
+async def list_pool_documents(
+    pool_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    return pools_mod.list_pool_documents(pool_id)
+
+
+@app.post("/api/pools/{pool_id}/documents/upload", response_model=None)
+@limiter.limit("20/minute")
+async def upload_pool_document(
+    pool_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: Dict = Depends(get_current_user),
+):
+    del request
+    pools_mod.require_pool_role(pool_id, current_user["id"], "editor")
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    lower = file.filename.lower()
+    if not (lower.endswith(".pdf") or lower.endswith(".txt")):
+        raise HTTPException(status_code=400, detail="Only PDF and TXT files are supported")
+
+    file_bytes = await file.read()
+    max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File exceeds {MAX_UPLOAD_SIZE_MB}MB limit")
+
+    try:
+        extracted_text = await documents_mod.extract_text(file.filename, file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
+
+    if not extracted_text.strip():
+        raise HTTPException(status_code=422, detail="No text could be extracted from file")
+
+    file_type = "pdf" if lower.endswith(".pdf") else "txt"
+
+    doc = documents_mod.create_document(
+        user_id=current_user["id"],
+        chat_id=None,
+        filename=file.filename,
+        file_type=file_type,
+        file_size_bytes=len(file_bytes),
+        extracted_text=extracted_text,
+        pool_id=pool_id,
+    )
+
+    try:
+        chunk_count, tokens_used = await rag_mod.process_document(
+            doc["id"], extracted_text, current_user["id"],
+        )
+        doc["chunk_count"] = chunk_count
+        doc["status"] = "ready"
+    except Exception as e:
+        logger.error(f"RAG processing failed for pool doc {doc['id']}: {e}")
+        doc["status"] = "error"
+        doc["error_message"] = str(e)
+
+    return doc
+
+
+@app.delete("/api/pools/{pool_id}/documents/{document_id}", response_model=None)
+async def delete_pool_document(
+    pool_id: str,
+    document_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "editor")
+    # Verify document belongs to this pool
+    doc = documents_mod.get_document(document_id, current_user["id"])
+    if not doc:
+        # Try without user filter for pool docs (uploaded by other users)
+        from .database import supabase as db
+        result = db.table("app_documents").select("id").eq("id", document_id).eq("pool_id", pool_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        db.table("app_documents").delete().eq("id", document_id).execute()
+        return {"deleted": True}
+    deleted = documents_mod.delete_document(document_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"deleted": True}
+
+
+# ── Pool Chats ──
+
+
+@app.get("/api/pools/{pool_id}/chats", response_model=None)
+async def list_pool_chats(
+    pool_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    return pools_mod.list_pool_chats(pool_id, current_user["id"])
+
+
+@app.post("/api/pools/{pool_id}/chats", response_model=None)
+async def create_pool_chat(
+    pool_id: str,
+    payload: CreatePoolChatRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    model = payload.model or admin_crud.get_default_model_id() or DEFAULT_MODEL
+    return pools_mod.create_pool_chat(
+        pool_id=pool_id,
+        created_by=current_user["id"],
+        title=payload.title,
+        is_shared=payload.is_shared,
+        model=model,
+        temperature=payload.temperature,
+    )
+
+
+@app.get("/api/pools/{pool_id}/chats/{chat_id}", response_model=None)
+async def get_pool_chat(
+    pool_id: str,
+    chat_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    chat = pools_mod.get_pool_chat(chat_id)
+    if not chat or chat["pool_id"] != pool_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    # Private chat visibility: only creator can see it
+    if not chat["is_shared"] and chat["created_by"] != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
+
+
+@app.post("/api/pools/{pool_id}/chats/{chat_id}/message", response_model=None)
+@limiter.limit("60/minute")
+async def send_pool_message(
+    pool_id: str,
+    chat_id: str,
+    payload: SendPoolMessageRequest,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    del request
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+
+    chat = pools_mod.get_pool_chat(chat_id)
+    if not chat or chat["pool_id"] != pool_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if not chat["is_shared"] and chat["created_by"] != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    model = payload.model or chat.get("model") or admin_crud.get_default_model_id() or DEFAULT_MODEL
+    temperature = payload.temperature if payload.temperature is not None else (
+        chat.get("temperature") if chat.get("temperature") is not None else DEFAULT_TEMPERATURE
+    )
+
+    # Store user message
+    pools_mod.add_pool_chat_message(chat_id, "user", payload.content, user_id=current_user["id"])
+
+    # Build LLM messages from chat history
+    llm_messages = _build_llm_messages(chat.get("messages", []))
+    llm_messages.append({"role": "user", "content": payload.content})
+
+    # RAG: inject relevant pool document context
+    rag_sources = []
+    try:
+        if pools_mod.has_ready_pool_documents(pool_id):
+            chunks = await rag_mod.search_similar_chunks(
+                query=payload.content,
+                user_id=current_user["id"],
+                pool_id=pool_id,
+            )
+            if chunks:
+                rag_context = rag_mod.build_rag_context(chunks)
+                rag_sources = [
+                    {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
+                    for c in chunks
+                ]
+                if llm_messages and llm_messages[0]["role"] == "system":
+                    llm_messages[0]["content"] += "\n\n" + rag_context
+                else:
+                    llm_messages.insert(0, {"role": "system", "content": rag_context})
+    except Exception as e:
+        logger.warning(f"Pool RAG injection failed: {e}")
+
+    if payload.stream:
+        return StreamingResponse(
+            _stream_pool_response(
+                pool_id, chat_id, llm_messages, model, temperature,
+                current_user["id"], rag_sources=rag_sources,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Non-streaming
+    try:
+        result = await call_llm(llm_messages, model, temperature)
+        assistant_content = result["content"]
+    except LLMError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    pools_mod.add_pool_chat_message(chat_id, "assistant", assistant_content, model=model)
+
+    usage = result.get("usage", {})
+    if usage:
+        provider, _ = parse_model_string(model)
+        record_usage(
+            user_id=current_user["id"],
+            chat_id=None,
+            model=model,
+            provider=provider,
+            prompt_tokens=usage.get("prompt_tokens", usage.get("input_tokens", 0)),
+            completion_tokens=usage.get("completion_tokens", usage.get("output_tokens", 0)),
+        )
+
+    updated_chat = pools_mod.get_pool_chat(chat_id)
+    if not updated_chat:
+        raise HTTPException(status_code=500, detail="Failed to load updated chat")
+    if rag_sources:
+        updated_chat["rag_sources"] = rag_sources
+    return updated_chat
+
+
+async def _stream_pool_response(
+    pool_id: str,
+    chat_id: str,
+    llm_messages: List[Dict[str, str]],
+    model: str,
+    temperature: float,
+    user_id: str,
+    rag_sources: Optional[List[Dict]] = None,
+):
+    full_content = ""
+    usage = {}
+    try:
+        async for chunk in stream_llm(llm_messages, model, temperature):
+            if isinstance(chunk, dict):
+                usage = chunk.get("usage", {})
+            else:
+                full_content += chunk
+                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+
+        pools_mod.add_pool_chat_message(chat_id, "assistant", full_content, model=model)
+
+        if usage:
+            provider, _ = parse_model_string(model)
+            record_usage(
+                user_id=user_id,
+                chat_id=None,
+                model=model,
+                provider=provider,
+                prompt_tokens=usage.get("prompt_tokens", usage.get("input_tokens", 0)),
+                completion_tokens=usage.get("completion_tokens", usage.get("output_tokens", 0)),
+            )
+
+        done_data = {'done': True, 'content': full_content}
+        if rag_sources:
+            done_data['sources'] = rag_sources
+        yield f"data: {json.dumps(done_data)}\n\n"
+
+    except LLMError as e:
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    except Exception as e:
+        logger.error(f"Pool stream error: {e}")
+        yield f"data: {json.dumps({'error': 'An unexpected error occurred'})}\n\n"
+
+
+@app.delete("/api/pools/{pool_id}/chats/{chat_id}", response_model=None)
+async def delete_pool_chat(
+    pool_id: str,
+    chat_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    chat = pools_mod.get_pool_chat(chat_id)
+    if not chat or chat["pool_id"] != pool_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    # Only creator or admin+ can delete
+    if chat["created_by"] != current_user["id"]:
+        pools_mod.require_pool_role(pool_id, current_user["id"], "admin")
+    pools_mod.delete_pool_chat(chat_id)
+    return {"deleted": True}

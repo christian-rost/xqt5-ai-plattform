@@ -6,6 +6,7 @@ import ChatArea from './components/ChatArea'
 import AdminDashboard from './components/AdminDashboard'
 import AssistantManager from './components/AssistantManager'
 import TemplateManager from './components/TemplateManager'
+import PoolDetail from './components/PoolDetail'
 
 const FALLBACK_MODEL = 'google/gemini-3-pro-preview'
 const DEFAULT_TEMPERATURE = 0.7
@@ -36,6 +37,10 @@ export default function App() {
 
   // Phase D state
   const [showAdmin, setShowAdmin] = useState(false)
+
+  // Pools state
+  const [pools, setPools] = useState([])
+  const [activePool, setActivePool] = useState(null)
 
   // Check auth on mount
   useEffect(() => {
@@ -113,6 +118,19 @@ export default function App() {
     }
   }, [user, loadAssistants, loadTemplates])
 
+  // Load pools
+  const loadPools = useCallback(async () => {
+    if (!user) return
+    try {
+      const data = await api.listPools()
+      setPools(data)
+    } catch {}
+  }, [user])
+
+  useEffect(() => {
+    if (user) loadPools()
+  }, [user, loadPools])
+
   // Sync model/temperature when conversation changes
   useEffect(() => {
     if (activeConversation) {
@@ -155,11 +173,14 @@ export default function App() {
     setUsage(null)
     setAssistants([])
     setTemplates([])
+    setPools([])
+    setActivePool(null)
   }
 
   async function onCreateConversation(assistantId = null) {
     setLoading(true)
     setError('')
+    setActivePool(null) // Mutually exclusive
     try {
       const created = await api.createConversation('New Conversation', assistantId)
       setSelectedModel(created.model || defaultModelId)
@@ -187,6 +208,7 @@ export default function App() {
   async function onOpenConversation(id) {
     setLoading(true)
     setError('')
+    setActivePool(null) // Mutually exclusive
     try {
       const full = await api.getConversation(id)
       setActiveConversation(full)
@@ -335,6 +357,36 @@ export default function App() {
     }
   }
 
+  // Pool handlers
+  async function handleSelectPool(pool) {
+    setActiveConversation(null) // Mutually exclusive
+    setShowAdmin(false)
+    setActivePool(pool)
+  }
+
+  async function handleCreatePool(data) {
+    setError('')
+    try {
+      const pool = await api.createPool(data)
+      await loadPools()
+      handleSelectPool(pool)
+    } catch (e) {
+      setError(e.message)
+      throw e
+    }
+  }
+
+  async function handleJoinPool(token) {
+    const pool = await api.joinPool(token)
+    await loadPools()
+    handleSelectPool(pool)
+  }
+
+  function handleClosePool() {
+    setActivePool(null)
+    loadPools()
+  }
+
   if (!authChecked) {
     return (
       <div className="app-loading">
@@ -353,21 +405,37 @@ export default function App() {
         user={user}
         usage={usage}
         conversations={conversations}
-        activeId={activeConversation?.id}
+        activeId={activePool ? null : activeConversation?.id}
         loading={loading}
         assistants={assistants}
         showAdmin={showAdmin}
+        pools={pools}
+        activePoolId={activePool?.id}
         onCreateConversation={() => onCreateConversation()}
         onOpenConversation={onOpenConversation}
         onDeleteConversation={onDeleteConversation}
         onSelectAssistant={onSelectAssistant}
         onManageAssistants={() => setShowAssistantManager(true)}
         onManageTemplates={() => setShowTemplateManager(true)}
-        onAdmin={() => setShowAdmin(true)}
+        onAdmin={() => { setShowAdmin(true); setActivePool(null) }}
         onLogout={handleLogout}
+        onSelectPool={handleSelectPool}
+        onCreatePool={handleCreatePool}
+        onJoinPool={handleJoinPool}
       />
       {showAdmin ? (
         <AdminDashboard onClose={() => { setShowAdmin(false); loadModels() }} currentUser={user} />
+      ) : activePool ? (
+        <PoolDetail
+          pool={activePool}
+          models={models}
+          selectedModel={selectedModel}
+          defaultModelId={defaultModelId}
+          user={user}
+          onClose={handleClosePool}
+          onPoolUpdated={loadPools}
+          onError={(msg) => setError(msg)}
+        />
       ) : (
         <ChatArea
           conversation={activeConversation}

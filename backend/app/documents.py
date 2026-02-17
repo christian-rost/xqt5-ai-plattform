@@ -90,6 +90,7 @@ def create_document(
     file_type: str,
     file_size_bytes: int,
     extracted_text: str,
+    pool_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     row = {
         "user_id": user_id,
@@ -101,6 +102,8 @@ def create_document(
     }
     if chat_id:
         row["chat_id"] = chat_id
+    if pool_id:
+        row["pool_id"] = pool_id
     result = supabase.table("app_documents").insert(row).execute()
     return result.data[0]
 
