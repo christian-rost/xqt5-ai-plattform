@@ -272,8 +272,12 @@ export const api = {
     return response.json()
   },
 
-  async adminGetUsage() {
-    const response = await authFetch(`${API_BASE}/api/admin/usage`)
+  async adminGetUsage(startDate, endDate) {
+    const params = new URLSearchParams()
+    if (startDate) params.set('start_date', startDate)
+    if (endDate) params.set('end_date', endDate)
+    const query = params.toString()
+    const response = await authFetch(`${API_BASE}/api/admin/usage${query ? '?' + query : ''}`)
     if (!response.ok) throw new Error('Konnte Nutzungsdaten nicht laden')
     return response.json()
   },

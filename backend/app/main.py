@@ -796,11 +796,12 @@ async def admin_update_user(
 
 
 @app.get("/api/admin/usage", response_model=None)
-async def admin_get_usage(admin: Dict = Depends(get_current_admin)):
-    return {
-        "global": admin_crud.get_global_usage_summary(),
-        "per_user": admin_crud.get_usage_per_user(),
-    }
+async def admin_get_usage(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: Dict = Depends(get_current_admin),
+):
+    return admin_crud.get_detailed_usage(start_date, end_date)
 
 
 @app.get("/api/admin/stats", response_model=None)

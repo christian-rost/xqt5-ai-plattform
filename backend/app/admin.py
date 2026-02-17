@@ -28,61 +28,110 @@ def update_user(user_id: str, is_active: Optional[bool] = None, is_admin: Option
     return result.data[0]
 
 
-def get_global_usage_summary() -> Dict[str, Any]:
-    result = supabase.table("chat_token_usage").select("*").execute()
+def get_detailed_usage(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    query = supabase.table("chat_token_usage").select("*")
+    if start_date:
+        query = query.gte("created_at", start_date)
+    if end_date:
+        query = query.lte("created_at", end_date + "T23:59:59")
+    result = query.execute()
     rows = result.data or []
 
+    # Get all users for name resolution
+    users_result = supabase.table("app_users").select("id,username,email").execute()
+    users_map = {u["id"]: u for u in (users_result.data or [])}
+
+    # Summary
     total_tokens = sum(r["total_tokens"] for r in rows)
     total_prompt = sum(r["prompt_tokens"] for r in rows)
     total_completion = sum(r["completion_tokens"] for r in rows)
     total_cost = sum(float(r["estimated_cost"]) for r in rows)
 
-    return {
+    summary = {
+        "total_requests": len(rows),
         "total_tokens": total_tokens,
-        "prompt_tokens": total_prompt,
-        "completion_tokens": total_completion,
+        "total_prompt_tokens": total_prompt,
+        "total_completion_tokens": total_completion,
         "estimated_cost": round(total_cost, 4),
-        "request_count": len(rows),
     }
 
+    # By provider
+    by_provider_map: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        p = r.get("provider", "unknown")
+        if p not in by_provider_map:
+            by_provider_map[p] = {"provider": p, "requests": 0, "tokens": 0, "estimated_cost": 0.0}
+        by_provider_map[p]["requests"] += 1
+        by_provider_map[p]["tokens"] += r["total_tokens"]
+        by_provider_map[p]["estimated_cost"] += float(r["estimated_cost"])
+    by_provider = sorted(by_provider_map.values(), key=lambda x: x["estimated_cost"], reverse=True)
+    for entry in by_provider:
+        entry["estimated_cost"] = round(entry["estimated_cost"], 4)
 
-def get_usage_per_user() -> List[Dict[str, Any]]:
-    # Get all usage records
-    usage_result = supabase.table("chat_token_usage").select("*").execute()
-    rows = usage_result.data or []
+    # By model
+    by_model_map: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        m = r.get("model", "unknown")
+        if m not in by_model_map:
+            by_model_map[m] = {
+                "model": m,
+                "provider": r.get("provider", "unknown"),
+                "requests": 0,
+                "tokens": 0,
+                "estimated_cost": 0.0,
+            }
+        by_model_map[m]["requests"] += 1
+        by_model_map[m]["tokens"] += r["total_tokens"]
+        by_model_map[m]["estimated_cost"] += float(r["estimated_cost"])
+    by_model = sorted(by_model_map.values(), key=lambda x: x["estimated_cost"], reverse=True)
+    for entry in by_model:
+        entry["avg_tokens"] = round(entry["tokens"] / entry["requests"]) if entry["requests"] else 0
+        entry["estimated_cost"] = round(entry["estimated_cost"], 4)
 
-    # Get all users
-    users_result = supabase.table("app_users").select("id,username,email").execute()
-    users_map = {u["id"]: u for u in (users_result.data or [])}
-
-    # Aggregate per user
-    per_user = {}
+    # By user
+    by_user_map: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         uid = r["user_id"]
-        if uid not in per_user:
+        if uid not in by_user_map:
             user = users_map.get(uid, {})
-            per_user[uid] = {
+            by_user_map[uid] = {
                 "user_id": uid,
                 "username": user.get("username", "Unknown"),
                 "email": user.get("email", ""),
-                "total_tokens": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
+                "requests": 0,
+                "tokens": 0,
                 "estimated_cost": 0.0,
-                "request_count": 0,
             }
-        per_user[uid]["total_tokens"] += r["total_tokens"]
-        per_user[uid]["prompt_tokens"] += r["prompt_tokens"]
-        per_user[uid]["completion_tokens"] += r["completion_tokens"]
-        per_user[uid]["estimated_cost"] += float(r["estimated_cost"])
-        per_user[uid]["request_count"] += 1
-
-    # Round costs
-    for entry in per_user.values():
+        by_user_map[uid]["requests"] += 1
+        by_user_map[uid]["tokens"] += r["total_tokens"]
+        by_user_map[uid]["estimated_cost"] += float(r["estimated_cost"])
+    by_user = sorted(by_user_map.values(), key=lambda x: x["estimated_cost"], reverse=True)
+    for entry in by_user:
         entry["estimated_cost"] = round(entry["estimated_cost"], 4)
 
-    # Sort by cost descending
-    return sorted(per_user.values(), key=lambda x: x["estimated_cost"], reverse=True)
+    # Daily
+    daily_map: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        day = r["created_at"][:10]  # YYYY-MM-DD
+        if day not in daily_map:
+            daily_map[day] = {"date": day, "requests": 0, "tokens": 0, "estimated_cost": 0.0}
+        daily_map[day]["requests"] += 1
+        daily_map[day]["tokens"] += r["total_tokens"]
+        daily_map[day]["estimated_cost"] += float(r["estimated_cost"])
+    daily = sorted(daily_map.values(), key=lambda x: x["date"], reverse=True)
+    for entry in daily:
+        entry["estimated_cost"] = round(entry["estimated_cost"], 4)
+
+    return {
+        "summary": summary,
+        "by_provider": by_provider,
+        "by_model": by_model,
+        "by_user": by_user,
+        "daily": daily,
+    }
 
 
 def get_system_stats() -> Dict[str, Any]:

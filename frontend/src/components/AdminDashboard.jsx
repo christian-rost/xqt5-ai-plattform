@@ -129,60 +129,193 @@ function CostsTab() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   useEffect(() => {
-    api.adminGetUsage()
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+    loadUsage()
   }, [])
 
-  if (loading) return <div className="admin-loading">Laden...</div>
-  if (error) return <div className="admin-error">{error}</div>
+  async function loadUsage(start, end) {
+    setLoading(true)
+    setError('')
+    try {
+      const result = await api.adminGetUsage(start, end)
+      setData(result)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleApply() {
+    loadUsage(startDate || undefined, endDate || undefined)
+  }
+
+  function handleReset() {
+    setStartDate('')
+    setEndDate('')
+    loadUsage()
+  }
+
+  if (loading && !data) return <div className="admin-loading">Laden...</div>
+  if (error && !data) return <div className="admin-error">{error}</div>
   if (!data) return null
 
-  const g = data.global
+  const s = data.summary
 
   return (
     <div>
-      <div className="admin-cards">
-        <div className="admin-card">
-          <div className="admin-card-label">Gesamtkosten</div>
-          <div className="admin-card-value">${g.estimated_cost.toFixed(4)}</div>
-        </div>
-        <div className="admin-card">
-          <div className="admin-card-label">Gesamt-Tokens</div>
-          <div className="admin-card-value">{g.total_tokens.toLocaleString()}</div>
-        </div>
-        <div className="admin-card">
-          <div className="admin-card-label">Anfragen</div>
-          <div className="admin-card-value">{g.request_count}</div>
+      {/* Date Filters */}
+      <div className="token-filters">
+        <div className="token-filter-row">
+          <div className="token-filter-group">
+            <label>Startdatum</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div className="token-filter-group">
+            <label>Enddatum</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+          <button className="btn btn-primary btn-small" onClick={handleApply} disabled={loading}
+            style={{ alignSelf: 'flex-end' }}>
+            {loading ? 'Laden...' : 'Anwenden'}
+          </button>
+          {(startDate || endDate) && (
+            <button className="btn btn-secondary btn-small" onClick={handleReset}
+              style={{ alignSelf: 'flex-end' }}>
+              Zurücksetzen
+            </button>
+          )}
         </div>
       </div>
 
-      <h3 className="admin-section-title">Kosten pro Benutzer</h3>
+      {error && <div className="admin-error">{error}</div>}
+
+      {/* 4 Summary Cards */}
+      <div className="admin-cards">
+        <div className="admin-card">
+          <div className="admin-card-label">Anfragen</div>
+          <div className="admin-card-value">{s.total_requests.toLocaleString()}</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card-label">Gesamt-Tokens</div>
+          <div className="admin-card-value">{s.total_tokens.toLocaleString()}</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card-label">Geschätzte Kosten</div>
+          <div className="admin-card-value">${s.estimated_cost.toFixed(4)}</div>
+        </div>
+        <div className="admin-card">
+          <div className="admin-card-label">Prompt / Completion</div>
+          <div className="admin-card-value">{s.total_prompt_tokens.toLocaleString()}</div>
+          <div className="admin-card-sub">{s.total_completion_tokens.toLocaleString()} Completion</div>
+        </div>
+      </div>
+
+      {/* By Provider */}
+      <h3 className="admin-section-title">Nach Provider</h3>
       <table className="admin-table">
         <thead>
           <tr>
-            <th>Username</th>
-            <th>Email</th>
-            <th>Tokens</th>
+            <th>Provider</th>
             <th>Anfragen</th>
+            <th>Tokens</th>
             <th>Kosten</th>
           </tr>
         </thead>
         <tbody>
-          {data.per_user.map((u) => (
+          {data.by_provider.map((p) => (
+            <tr key={p.provider}>
+              <td><span className="provider-badge">{p.provider}</span></td>
+              <td>{p.requests.toLocaleString()}</td>
+              <td>{p.tokens.toLocaleString()}</td>
+              <td>${p.estimated_cost.toFixed(4)}</td>
+            </tr>
+          ))}
+          {data.by_provider.length === 0 && (
+            <tr><td colSpan="4" className="admin-empty-cell">Keine Daten</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* By Model */}
+      <h3 className="admin-section-title">Nach Modell</h3>
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Modell</th>
+            <th>Provider</th>
+            <th>Anfragen</th>
+            <th>Avg Tokens</th>
+            <th>Kosten</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.by_model.map((m) => (
+            <tr key={m.model}>
+              <td><code>{m.model}</code></td>
+              <td><span className="provider-badge">{m.provider}</span></td>
+              <td>{m.requests.toLocaleString()}</td>
+              <td>{m.avg_tokens.toLocaleString()}</td>
+              <td>${m.estimated_cost.toFixed(4)}</td>
+            </tr>
+          ))}
+          {data.by_model.length === 0 && (
+            <tr><td colSpan="5" className="admin-empty-cell">Keine Daten</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* By User */}
+      <h3 className="admin-section-title">Nach Benutzer</h3>
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Anfragen</th>
+            <th>Tokens</th>
+            <th>Kosten</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.by_user.map((u) => (
             <tr key={u.user_id}>
               <td>{u.username}</td>
-              <td>{u.email}</td>
-              <td>{u.total_tokens.toLocaleString()}</td>
-              <td>{u.request_count}</td>
+              <td>{u.requests.toLocaleString()}</td>
+              <td>{u.tokens.toLocaleString()}</td>
               <td>${u.estimated_cost.toFixed(4)}</td>
             </tr>
           ))}
-          {data.per_user.length === 0 && (
-            <tr><td colSpan="5" className="admin-empty-cell">Keine Daten</td></tr>
+          {data.by_user.length === 0 && (
+            <tr><td colSpan="4" className="admin-empty-cell">Keine Daten</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Daily Usage */}
+      <h3 className="admin-section-title">Tägliche Nutzung</h3>
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Anfragen</th>
+            <th>Tokens</th>
+            <th>Kosten</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.daily.map((d) => (
+            <tr key={d.date}>
+              <td>{new Date(d.date + 'T00:00:00').toLocaleDateString('de-DE')}</td>
+              <td>{d.requests.toLocaleString()}</td>
+              <td>{d.tokens.toLocaleString()}</td>
+              <td>${d.estimated_cost.toFixed(4)}</td>
+            </tr>
+          ))}
+          {data.daily.length === 0 && (
+            <tr><td colSpan="4" className="admin-empty-cell">Keine Daten</td></tr>
           )}
         </tbody>
       </table>
