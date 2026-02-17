@@ -210,6 +210,11 @@ async def create_conversation(
         if temperature is None and assistant.get("temperature") is not None:
             temperature = assistant["temperature"]
 
+    # Ensure new conversations always get a concrete default model.
+    # This prevents stale frontend state from selecting an old default.
+    if not model:
+        model = admin_crud.get_default_model_id() or DEFAULT_MODEL
+
     result = storage.create_conversation(
         title=request.title or "New Conversation",
         user_id=current_user["id"],

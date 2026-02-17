@@ -162,6 +162,7 @@ export default function App() {
     setError('')
     try {
       const created = await api.createConversation('New Conversation', assistantId)
+      setSelectedModel(created.model || defaultModelId)
       setConversations((prev) => [
         {
           id: created.id,
