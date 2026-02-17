@@ -162,7 +162,7 @@ async def refresh(payload: RefreshRequest, request: Request):
     token_version = token_payload.get("token_version", 0)
     user = get_user_by_id(user_id)
     if not user or not user.get("is_active", False):
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(status_code=401, detail="User is inactive or not found")
     if token_version != user.get("token_version", 0):
         raise HTTPException(status_code=401, detail="Refresh token has been revoked")
     access_token = create_access_token(
