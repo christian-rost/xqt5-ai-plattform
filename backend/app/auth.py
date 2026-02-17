@@ -27,21 +27,23 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_access_token(user_id: str, is_admin: bool = False) -> str:
+def create_access_token(user_id: str, is_admin: bool = False, token_version: int = 0) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": user_id,
         "is_admin": is_admin,
+        "token_version": token_version,
         "type": "access",
         "exp": expire,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, token_version: int = 0) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
+        "token_version": token_version,
         "type": "refresh",
         "exp": expire,
     }
@@ -78,6 +80,12 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User is inactive or not found",
+        )
+    token_version = payload.get("token_version", 0)
+    if token_version != user.get("token_version", 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
         )
     return {
         "id": user_id,
@@ -118,6 +126,7 @@ def register_user(username: str, email: str, password: str) -> Dict:
         "password_hash": password_hash,
         "is_active": True,
         "is_admin": False,
+        "token_version": 0,
     }).execute()
 
     user = result.data[0]
@@ -126,6 +135,7 @@ def register_user(username: str, email: str, password: str) -> Dict:
         "username": user["username"],
         "email": user["email"],
         "is_admin": user["is_admin"],
+        "token_version": user.get("token_version", 0),
     }
 
 
@@ -145,13 +155,26 @@ def authenticate_user(username: str, password: str) -> Optional[Dict]:
         "username": user["username"],
         "email": user["email"],
         "is_admin": user.get("is_admin", False),
+        "token_version": user.get("token_version", 0),
     }
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict]:
     result = supabase.table("app_users").select(
-        "id,username,email,is_admin,is_active,created_at"
+        "id,username,email,is_admin,is_active,token_version,created_at"
     ).eq("id", user_id).execute()
+    if not result.data:
+        return None
+    return result.data[0]
+
+
+def bump_token_version(user_id: str) -> Optional[Dict]:
+    """Increase token_version to invalidate all issued tokens for a user."""
+    current = supabase.table("app_users").select("id,token_version").eq("id", user_id).execute()
+    if not current.data:
+        return None
+    next_version = int(current.data[0].get("token_version", 0)) + 1
+    result = supabase.table("app_users").update({"token_version": next_version}).eq("id", user_id).execute()
     if not result.data:
         return None
     return result.data[0]

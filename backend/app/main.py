@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from .auth import (
     authenticate_user,
+    bump_token_version,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -82,8 +83,12 @@ async def list_models() -> list:
 @app.post("/api/auth/register", response_model=None)
 async def register(request: RegisterRequest, req: Request):
     user = register_user(request.username, request.email, request.password)
-    access_token = create_access_token(user["id"], user.get("is_admin", False))
-    refresh_token = create_refresh_token(user["id"])
+    access_token = create_access_token(
+        user["id"],
+        user.get("is_admin", False),
+        token_version=user.get("token_version", 0),
+    )
+    refresh_token = create_refresh_token(user["id"], token_version=user.get("token_version", 0))
     audit.log_event(audit.AUTH_REGISTER, user_id=user["id"], ip_address=req.client.host)
     return {
         "access_token": access_token,
@@ -102,8 +107,12 @@ async def login(request: LoginRequest, req: Request):
             ip_address=req.client.host,
         )
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    access_token = create_access_token(user["id"], user.get("is_admin", False))
-    refresh_token = create_refresh_token(user["id"])
+    access_token = create_access_token(
+        user["id"],
+        user.get("is_admin", False),
+        token_version=user.get("token_version", 0),
+    )
+    refresh_token = create_refresh_token(user["id"], token_version=user.get("token_version", 0))
     audit.log_event(audit.AUTH_LOGIN, user_id=user["id"], ip_address=req.client.host)
     return {
         "access_token": access_token,
@@ -118,10 +127,17 @@ async def refresh(request: RefreshRequest):
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     user_id = payload.get("sub")
+    token_version = payload.get("token_version", 0)
     user = get_user_by_id(user_id)
     if not user or not user.get("is_active", False):
         raise HTTPException(status_code=401, detail="User not found")
-    access_token = create_access_token(user["id"], user.get("is_admin", False))
+    if token_version != user.get("token_version", 0):
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
+    access_token = create_access_token(
+        user["id"],
+        user.get("is_admin", False),
+        token_version=user.get("token_version", 0),
+    )
     return {
         "access_token": access_token,
         "user": user,
@@ -724,6 +740,10 @@ async def admin_update_user(
     result = admin_crud.update_user(user_id, is_active=request.is_active, is_admin=request.is_admin)
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Invalidate all existing user sessions on deactivation.
+    if request.is_active is False:
+        bump_token_version(user_id)
 
     # Audit log for user toggles
     if request.is_active is not None:
