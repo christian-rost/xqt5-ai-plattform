@@ -7,6 +7,9 @@ from typing import Dict, List, Optional
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from .auth import (
     authenticate_user,
@@ -50,6 +53,25 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="XQT5 AI-Workplace API")
 
+
+def _rate_limit_key(request: Request) -> str:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "", 1).strip()
+        if token:
+            try:
+                payload = decode_token(token)
+                if payload.get("type") == "access" and payload.get("sub"):
+                    return f"user:{payload['sub']}"
+            except HTTPException:
+                pass
+    return f"ip:{get_remote_address(request)}"
+
+
+limiter = Limiter(key_func=_rate_limit_key)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS_LIST,
@@ -81,15 +103,16 @@ async def list_models() -> list:
 
 
 @app.post("/api/auth/register", response_model=None)
-async def register(request: RegisterRequest, req: Request):
-    user = register_user(request.username, request.email, request.password)
+@limiter.limit("5/minute")
+async def register(payload: RegisterRequest, request: Request):
+    user = register_user(payload.username, payload.email, payload.password)
     access_token = create_access_token(
         user["id"],
         user.get("is_admin", False),
         token_version=user.get("token_version", 0),
     )
     refresh_token = create_refresh_token(user["id"], token_version=user.get("token_version", 0))
-    audit.log_event(audit.AUTH_REGISTER, user_id=user["id"], ip_address=req.client.host)
+    audit.log_event(audit.AUTH_REGISTER, user_id=user["id"], ip_address=request.client.host)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -98,13 +121,14 @@ async def register(request: RegisterRequest, req: Request):
 
 
 @app.post("/api/auth/login", response_model=None)
-async def login(request: LoginRequest, req: Request):
-    user = authenticate_user(request.username, request.password)
+@limiter.limit("10/minute")
+async def login(payload: LoginRequest, request: Request):
+    user = authenticate_user(payload.username, payload.password)
     if not user:
         audit.log_event(
             audit.AUTH_LOGIN_FAILED,
-            metadata={"username": request.username},
-            ip_address=req.client.host,
+            metadata={"username": payload.username},
+            ip_address=request.client.host,
         )
         raise HTTPException(status_code=401, detail="Invalid username or password")
     access_token = create_access_token(
@@ -113,7 +137,7 @@ async def login(request: LoginRequest, req: Request):
         token_version=user.get("token_version", 0),
     )
     refresh_token = create_refresh_token(user["id"], token_version=user.get("token_version", 0))
-    audit.log_event(audit.AUTH_LOGIN, user_id=user["id"], ip_address=req.client.host)
+    audit.log_event(audit.AUTH_LOGIN, user_id=user["id"], ip_address=request.client.host)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -122,12 +146,14 @@ async def login(request: LoginRequest, req: Request):
 
 
 @app.post("/api/auth/refresh", response_model=None)
-async def refresh(request: RefreshRequest):
-    payload = decode_token(request.refresh_token)
-    if payload.get("type") != "refresh":
+@limiter.limit("30/minute")
+async def refresh(payload: RefreshRequest, request: Request):
+    del request
+    token_payload = decode_token(payload.refresh_token)
+    if token_payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-    user_id = payload.get("sub")
-    token_version = payload.get("token_version", 0)
+    user_id = token_payload.get("sub")
+    token_version = token_payload.get("token_version", 0)
     user = get_user_by_id(user_id)
     if not user or not user.get("is_active", False):
         raise HTTPException(status_code=401, detail="User not found")
@@ -286,11 +312,14 @@ async def _auto_name_conversation(conversation_id: str, user_message: str) -> No
 
 
 @app.post("/api/conversations/{conversation_id}/message", response_model=None)
+@limiter.limit("60/minute")
 async def send_message(
     conversation_id: str,
-    request: SendMessageRequest,
+    payload: SendMessageRequest,
+    request: Request,
     current_user: Dict = Depends(get_current_user),
 ):
+    del request
     if not storage.verify_conversation_owner(conversation_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -307,29 +336,29 @@ async def send_message(
             system_prompt = assistant.get("system_prompt")
 
     # Determine model and temperature: message-level > conversation-level > assistant > default
-    model = request.model or conversation.get("model") or (assistant.get("model") if assistant else None) or DEFAULT_MODEL
-    temperature = request.temperature if request.temperature is not None else (
+    model = payload.model or conversation.get("model") or (assistant.get("model") if assistant else None) or DEFAULT_MODEL
+    temperature = payload.temperature if payload.temperature is not None else (
         conversation.get("temperature") if conversation.get("temperature") is not None else (
             assistant.get("temperature") if assistant and assistant.get("temperature") is not None else DEFAULT_TEMPERATURE
         )
     )
 
     # Store user message
-    storage.add_user_message(conversation_id, request.content)
+    storage.add_user_message(conversation_id, payload.content)
 
     # Check if this is the first user message (for auto-naming)
     is_first_message = all(m["role"] != "user" for m in conversation.get("messages", []))
 
     # Build LLM message history (with system prompt if assistant)
     llm_messages = _build_llm_messages(conversation.get("messages", []), system_prompt=system_prompt)
-    llm_messages.append({"role": "user", "content": request.content})
+    llm_messages.append({"role": "user", "content": payload.content})
 
     # RAG: inject relevant document context
     rag_sources = []
     try:
         if documents_mod.has_ready_documents(current_user["id"], conversation_id):
             chunks = await rag_mod.search_similar_chunks(
-                query=request.content,
+                query=payload.content,
                 user_id=current_user["id"],
                 chat_id=conversation_id,
             )
@@ -347,11 +376,11 @@ async def send_message(
     except Exception as e:
         logger.warning(f"RAG injection failed: {e}")
 
-    if request.stream:
+    if payload.stream:
         return StreamingResponse(
             _stream_response(
                 conversation_id, llm_messages, model, temperature,
-                is_first_message, request.content, current_user["id"],
+                is_first_message, payload.content, current_user["id"],
                 rag_sources=rag_sources,
             ),
             media_type="text/event-stream",
@@ -395,7 +424,7 @@ async def send_message(
 
     # Auto-name in background
     if is_first_message:
-        asyncio.create_task(_auto_name_conversation(conversation_id, request.content))
+        asyncio.create_task(_auto_name_conversation(conversation_id, payload.content))
 
     updated = storage.get_conversation(conversation_id)
     if not updated:
@@ -606,11 +635,14 @@ async def delete_template(
 
 
 @app.post("/api/documents/upload", response_model=None)
+@limiter.limit("20/minute")
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     chat_id: Optional[str] = Form(None),
     current_user: Dict = Depends(get_current_user),
 ):
+    del request
     # Validate file type
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -690,6 +722,7 @@ async def delete_document(
 
 
 @app.post("/api/rag/search", response_model=None)
+@limiter.limit("60/minute")
 async def rag_search(
     request: Request,
     current_user: Dict = Depends(get_current_user),
@@ -885,10 +918,13 @@ async def admin_delete_provider_key(
 
 
 @app.post("/api/admin/providers/{provider}/test", response_model=None)
+@limiter.limit("20/minute")
 async def admin_test_provider(
     provider: str,
+    request: Request,
     admin: Dict = Depends(get_current_admin),
 ):
+    del request
     return await providers_mod.test_provider(provider)
 
 
