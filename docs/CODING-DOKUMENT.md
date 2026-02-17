@@ -79,6 +79,13 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **Keine System-Pakete**: Kein Tesseract/Poppler im Docker nötig — rein API-basiert.
 - **Timeout**: 120s für große PDFs (httpx AsyncClient).
 
+### 2026-02-17 (Admin User Löschen + Default-Modell Fix)
+- **Admin User Soft-Delete**: Neuer `DELETE /api/admin/users/{user_id}` Endpoint. Setzt `is_active=false` und ruft `bump_token_version()` auf. Selbstschutz: Admin kann sich nicht selbst löschen (400). Frontend: Löschen-Button pro Zeile, deaktiviert für eigenen User, `confirm()` Dialog.
+- **Deaktivierte User ausblenden**: UsersTab zeigt standardmäßig nur aktive User. Checkbox "Deaktivierte anzeigen" blendet inaktive User grau ein (`.user-inactive td { opacity: 0.5 }`).
+- **Fehler: Default-Modell aus Admin-Dashboard wurde ignoriert.**
+  Ursache: Frontend hatte `const DEFAULT_MODEL = 'google/gemini-3-pro-preview'` hardcoded. Die `is_default`-Einstellung aus `app_model_config` wurde weder von der `/api/models`-API zurückgegeben noch vom Frontend abgefragt.
+  Korrektur: `get_available_models()` gibt jetzt `is_default` mit. Frontend sucht zuerst ein `is_default && available` Modell, Fallback auf erstes verfügbares. **Regel: Admin-konfigurierbare Defaults immer aus der DB lesen, nie im Frontend hardcoden.**
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).

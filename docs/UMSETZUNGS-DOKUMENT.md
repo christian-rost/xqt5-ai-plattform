@@ -296,6 +296,23 @@
    - Env-Variable `FORWARDED_ALLOW_IPS` (Default: `*`)
 6. **Dependencies**: `slowapi>=0.1.9`, `redis>=5.0.0` in pyproject.toml + Dockerfile
 
+### Phase D Erweiterung 3: Admin User Löschen + Default-Modell Fix (2026-02-17)
+1. **Admin User Soft-Delete** (`DELETE /api/admin/users/{user_id}`):
+   - Setzt `is_active=false` + `bump_token_version()` zur Session-Invalidierung
+   - Selbstschutz: Admin kann sich nicht selbst löschen (HTTP 400)
+   - Audit-Log: `ADMIN_USER_DEACTIVATE`
+2. **Frontend UsersTab Erweiterungen** (`AdminDashboard.jsx`):
+   - `showInactive` State (default `false`) mit Checkbox "Deaktivierte anzeigen"
+   - Inaktive User standardmäßig ausgeblendet, mit Toggle einblendbar
+   - "Löschen"-Button pro Zeile (rot, disabled für eigenen User, `confirm()` Dialog)
+   - Deaktivierte Zeilen: CSS-Klasse `.user-inactive` für graue Darstellung
+   - `currentUser` Prop von `App.jsx` durchgereicht für Selbstschutz
+3. **Default-Modell Bugfix** (`llm.py` + `App.jsx`):
+   - `/api/models` gibt jetzt `is_default` Flag aus `app_model_config` zurück
+   - Frontend wählt beim Laden das `is_default && available` Modell statt hardcoded Fallback
+   - Hardcoded `DEFAULT_MODEL` in `FALLBACK_MODEL` umbenannt (nur noch als letzter Fallback)
+4. **API** (`api.js`): Neue Methode `adminDeleteUser(userId)` → `DELETE /api/admin/users/${userId}`
+
 ## Nächste Umsetzungsschritte
 1. **Phase D Rest**: Workflow-Engine, SSO (OIDC/SAML)
 2. RLS und Mandantenmodell in Supabase aktivieren

@@ -72,6 +72,11 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 3. Token Version Revocation für sofortige Session-Invalidierung bei User-Deaktivierung
 4. is_active Prüfung auf allen Auth-Flows (Access-Token UND Refresh-Token)
 5. Proxy-Header-Konfiguration für korrekte IP-Erkennung hinter Reverse-Proxy
+### Admin User Löschen + Default-Modell Fix (umgesetzt 2026-02-17)
+1. Admin User Soft-Delete (is_active=false + Session-Invalidierung) via DELETE Endpoint
+2. Selbstschutz: Admin kann sich nicht selbst löschen
+3. Deaktivierte User standardmäßig ausgeblendet, mit Toggle einblendbar (grau dargestellt)
+4. Default-Modell aus DB (`is_default` in `app_model_config`) wird jetzt vom Frontend respektiert
 ### Noch geplant
 1. Workflow-Engine für automatisierte Abläufe
 2. SSO (OIDC/SAML)
