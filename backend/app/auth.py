@@ -73,9 +73,15 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         )
+    user = get_user_by_id(user_id)
+    if not user or not user.get("is_active", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User is inactive or not found",
+        )
     return {
         "id": user_id,
-        "is_admin": payload.get("is_admin", False),
+        "is_admin": user.get("is_admin", False),
     }
 
 
@@ -143,7 +149,9 @@ def authenticate_user(username: str, password: str) -> Optional[Dict]:
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict]:
-    result = supabase.table("app_users").select("id,username,email,is_admin,created_at").eq("id", user_id).execute()
+    result = supabase.table("app_users").select(
+        "id,username,email,is_admin,is_active,created_at"
+    ).eq("id", user_id).execute()
     if not result.data:
         return None
     return result.data[0]

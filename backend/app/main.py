@@ -119,7 +119,7 @@ async def refresh(request: RefreshRequest):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     user_id = payload.get("sub")
     user = get_user_by_id(user_id)
-    if not user:
+    if not user or not user.get("is_active", False):
         raise HTTPException(status_code=401, detail="User not found")
     access_token = create_access_token(user["id"], user.get("is_admin", False))
     return {
