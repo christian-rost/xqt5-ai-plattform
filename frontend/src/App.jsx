@@ -19,6 +19,7 @@ export default function App() {
   const [activeConversation, setActiveConversation] = useState(null)
   const [models, setModels] = useState([])
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODEL)
+  const [defaultModelId, setDefaultModelId] = useState(FALLBACK_MODEL)
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState(null)
@@ -50,7 +51,10 @@ export default function App() {
       setModels(data)
       const defaultModel = data.find((m) => m.is_default && m.available)
       const firstAvailable = defaultModel || data.find((m) => m.available)
-      if (firstAvailable) setSelectedModel(firstAvailable.id)
+      if (firstAvailable) {
+        setDefaultModelId(firstAvailable.id)
+        setSelectedModel(firstAvailable.id)
+      }
     }).catch(() => {})
   }, [])
 
@@ -112,10 +116,10 @@ export default function App() {
   // Sync model/temperature when conversation changes
   useEffect(() => {
     if (activeConversation) {
-      if (activeConversation.model) setSelectedModel(activeConversation.model)
+      setSelectedModel(activeConversation.model || defaultModelId)
       if (activeConversation.temperature != null) setTemperature(activeConversation.temperature)
     }
-  }, [activeConversation?.id])
+  }, [activeConversation?.id, defaultModelId])
 
   // Load documents for active conversation
   const loadDocuments = useCallback(async () => {
