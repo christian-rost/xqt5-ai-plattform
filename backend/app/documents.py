@@ -695,12 +695,13 @@ def list_chat_document_texts(
         .eq("user_id", user_id)
         .is_("pool_id", "null")
         .eq("chat_id", chat_id)
-        .not_.is_("extracted_text", "null")
         .order("created_at", desc=True)
-        .limit(limit)
+        .limit(max(limit * 4, 12))
         .execute()
     )
-    return result.data or []
+    rows = result.data or []
+    filtered = [r for r in rows if str(r.get("extracted_text") or "").strip()]
+    return filtered[:limit]
 
 
 def list_global_document_texts(
@@ -714,12 +715,13 @@ def list_global_document_texts(
         .eq("user_id", user_id)
         .is_("pool_id", "null")
         .is_("chat_id", "null")
-        .not_.is_("extracted_text", "null")
         .order("created_at", desc=True)
-        .limit(limit)
+        .limit(max(limit * 4, 8))
         .execute()
     )
-    return result.data or []
+    rows = result.data or []
+    filtered = [r for r in rows if str(r.get("extracted_text") or "").strip()]
+    return filtered[:limit]
 
 
 def list_ready_pool_document_texts(
