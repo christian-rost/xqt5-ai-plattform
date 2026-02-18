@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,6 +69,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="XQT5 AI-Workplace API")
 SUPPORTED_UPLOAD_EXTENSIONS = (".pdf", ".txt", ".png", ".jpg", ".jpeg", ".webp")
+MAX_OCR_ASSET_EMBEDDINGS = 40
 
 
 def _is_supported_upload_file(filename: str) -> bool:
@@ -83,6 +84,46 @@ def _resolve_file_type(filename: str) -> str:
     if lower.endswith(".txt"):
         return "txt"
     return "image"
+
+
+async def _index_ocr_assets_for_document(
+    document_id: str,
+    user_id: str,
+    filename: str,
+    ocr_assets: List[Dict[str, Any]],
+    pool_id: Optional[str] = None,
+) -> int:
+    if not ocr_assets:
+        return 0
+
+    selected_assets = ocr_assets[:MAX_OCR_ASSET_EMBEDDINGS]
+    if len(ocr_assets) > len(selected_assets):
+        logger.info(
+            "OCR assets capped for document %s: using %d of %d",
+            document_id,
+            len(selected_assets),
+            len(ocr_assets),
+        )
+
+    embedding_inputs: List[str] = []
+    for asset in selected_assets:
+        page = asset.get("page_number")
+        fallback = f"{filename} Seite {page}" if page else filename
+        text = (
+            str(asset.get("caption", "")).strip()
+            or str(asset.get("ocr_text", "")).strip()
+            or fallback
+        )
+        embedding_inputs.append(text[:4000])
+
+    embeddings = await rag_mod.generate_embeddings(embedding_inputs) if embedding_inputs else []
+    return documents_mod.create_document_assets(
+        document_id=document_id,
+        user_id=user_id,
+        assets=selected_assets,
+        embeddings=embeddings,
+        pool_id=pool_id,
+    )
 
 
 def _rate_limit_key(request: Request) -> str:
@@ -839,7 +880,7 @@ async def upload_document(
 
     # Extract text
     try:
-        extracted_text = await documents_mod.extract_text(file.filename, file_bytes)
+        extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(file.filename, file_bytes)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
 
@@ -882,6 +923,19 @@ async def upload_document(
                 )
             except Exception as e:
                 logger.warning("Image asset indexing failed for %s: %s", doc["id"], e)
+
+        if ocr_assets:
+            try:
+                asset_count = await _index_ocr_assets_for_document(
+                    document_id=doc["id"],
+                    user_id=current_user["id"],
+                    filename=file.filename,
+                    ocr_assets=ocr_assets,
+                )
+                if asset_count:
+                    doc["asset_count"] = asset_count
+            except Exception as e:
+                logger.warning("OCR asset indexing failed for %s: %s", doc["id"], e)
     except Exception as e:
         logger.error(f"RAG processing failed for {doc['id']}: {e}")
         doc["status"] = "error"
@@ -1404,7 +1458,7 @@ async def upload_pool_document(
         raise HTTPException(status_code=400, detail=f"File exceeds {MAX_UPLOAD_SIZE_MB}MB limit")
 
     try:
-        extracted_text = await documents_mod.extract_text(file.filename, file_bytes)
+        extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(file.filename, file_bytes)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
 
@@ -1447,6 +1501,20 @@ async def upload_pool_document(
                 )
             except Exception as e:
                 logger.warning("Pool image asset indexing failed for %s: %s", doc["id"], e)
+
+        if ocr_assets:
+            try:
+                asset_count = await _index_ocr_assets_for_document(
+                    document_id=doc["id"],
+                    user_id=current_user["id"],
+                    filename=file.filename,
+                    ocr_assets=ocr_assets,
+                    pool_id=pool_id,
+                )
+                if asset_count:
+                    doc["asset_count"] = asset_count
+            except Exception as e:
+                logger.warning("Pool OCR asset indexing failed for %s: %s", doc["id"], e)
     except Exception as e:
         logger.error(f"RAG processing failed for pool doc {doc['id']}: {e}")
         doc["status"] = "error"

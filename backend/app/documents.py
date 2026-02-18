@@ -2,7 +2,7 @@ import base64
 import logging
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 
@@ -39,7 +39,8 @@ async def extract_text(filename: str, file_bytes: bytes) -> str:
     """
     lower = filename.lower()
     if lower.endswith(".pdf"):
-        return await _ocr_pdf_mistral(file_bytes, filename)
+        text, _ = await _ocr_pdf_mistral_with_assets(file_bytes, filename)
+        return text
     elif lower.endswith(".txt"):
         return file_bytes.decode("utf-8", errors="replace")
     elif is_supported_image(lower):
@@ -48,8 +49,27 @@ async def extract_text(filename: str, file_bytes: bytes) -> str:
         raise ValueError(f"Unsupported file type: {filename}")
 
 
+async def extract_text_and_assets(filename: str, file_bytes: bytes) -> Tuple[str, List[Dict[str, Any]]]:
+    """Extract text and OCR-derived image assets from a file."""
+    lower = filename.lower()
+    if lower.endswith(".pdf"):
+        return await _ocr_pdf_mistral_with_assets(file_bytes, filename)
+    if lower.endswith(".txt"):
+        return file_bytes.decode("utf-8", errors="replace"), []
+    if is_supported_image(lower):
+        text = await _ocr_image_mistral(file_bytes, filename, guess_image_mime(filename))
+        return text, []
+    raise ValueError(f"Unsupported file type: {filename}")
+
+
 async def _ocr_pdf_mistral(file_bytes: bytes, filename: str) -> str:
     """Run OCR on a PDF via the Mistral OCR API."""
+    text, _ = await _ocr_pdf_mistral_with_assets(file_bytes, filename)
+    return text
+
+
+async def _ocr_pdf_mistral_with_assets(file_bytes: bytes, filename: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """Run OCR on a PDF via the Mistral OCR API and return text + image assets."""
     from . import providers as providers_mod
 
     api_key = providers_mod.get_api_key("mistral")
@@ -61,7 +81,7 @@ async def _ocr_pdf_mistral(file_bytes: bytes, filename: str) -> str:
 
     b64 = base64.b64encode(file_bytes).decode("ascii")
     document_url = f"data:application/pdf;base64,{b64}"
-    return await _mistral_ocr_document(api_key, document_url, filename, len(file_bytes))
+    return await _mistral_ocr_document_with_assets(api_key, document_url, filename, len(file_bytes))
 
 
 async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -> str:
@@ -109,43 +129,6 @@ async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -
     return _extract_text_from_mistral_response(data)
 
 
-async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, byte_length: int) -> str:
-    payload = _build_mistral_payload_document(document_url)
-
-    logger.info("OCR via Mistral for %s (%d bytes)", filename, byte_length)
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            "https://api.mistral.ai/v1/ocr",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-
-    if resp.status_code == 422:
-        # Some API versions accept document object without explicit `type`
-        payload_fallback = _build_mistral_payload_document(document_url, include_type=False)
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                "https://api.mistral.ai/v1/ocr",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload_fallback,
-            )
-
-    if resp.status_code != 200:
-        detail = resp.text[:300]
-        logger.error("Mistral OCR failed (%d): %s", resp.status_code, detail)
-        raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {resp.status_code})")
-
-    data = resp.json()
-    return _extract_text_from_mistral_response(data)
-
-
 def _build_mistral_payload_document(document_url: str, include_type: bool = True) -> Dict[str, Any]:
     document: Dict[str, Any] = {"document_url": document_url}
     if include_type:
@@ -157,7 +140,8 @@ def _build_mistral_payload_document(document_url: str, include_type: bool = True
     }
     if MISTRAL_OCR_STRUCTURED:
         payload.update(_mistral_annotation_formats())
-        payload["include_image_base64"] = MISTRAL_OCR_INCLUDE_IMAGE_BASE64
+    if MISTRAL_OCR_INCLUDE_IMAGE_BASE64:
+        payload["include_image_base64"] = True
     return payload
 
 
@@ -172,7 +156,8 @@ def _build_mistral_payload_image(image_url: str, as_object: bool = False) -> Dic
     }
     if MISTRAL_OCR_STRUCTURED:
         payload.update(_mistral_annotation_formats())
-        payload["include_image_base64"] = MISTRAL_OCR_INCLUDE_IMAGE_BASE64
+    if MISTRAL_OCR_INCLUDE_IMAGE_BASE64:
+        payload["include_image_base64"] = True
     return payload
 
 
@@ -230,6 +215,11 @@ def _mistral_annotation_formats() -> Dict[str, Any]:
 
 
 def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
+    text, _ = _extract_text_and_assets_from_mistral_response(data)
+    return text
+
+
+def _extract_text_and_assets_from_mistral_response(data: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]]]:
     pages = data.get("pages", []) or []
     updated_pages = _apply_summaries_to_pages(pages)
     extracted = "\n\n".join(
@@ -245,7 +235,8 @@ def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
     if doc_anno_text:
         extracted = f"{extracted}\n\n{doc_anno_text}".strip()
 
-    return extracted
+    assets = _extract_image_assets_from_pages(updated_pages)
+    return extracted, assets
 
 
 def _normalize_markdown_text(text: str) -> str:
@@ -373,6 +364,107 @@ def _document_annotation_to_text(annotation: Any) -> str:
     if not fields:
         return ""
     return "[Document annotation]\n" + "\n".join(f"- {f}" for f in fields)
+
+
+def _extract_image_assets_from_pages(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    assets: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    sorted_pages = sorted(pages, key=lambda p: _safe_int(p.get("index")) or 0)
+
+    for page in sorted_pages:
+        raw_page_index = page.get("index")
+        page_number: Optional[int] = None
+        if isinstance(raw_page_index, int):
+            page_number = raw_page_index + 1
+        elif isinstance(raw_page_index, str) and raw_page_index.isdigit():
+            page_number = int(raw_page_index) + 1
+
+        for img in page.get("images", []) or []:
+            data_uri, mime_type = _image_data_uri_from_ocr_image(img)
+            if not data_uri:
+                continue
+
+            img_id = str(img.get("id", "")).strip()
+            dedupe_key = f"{page_number}:{img_id or data_uri[:96]}"
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            annotation = _parse_json_like(img.get("image_annotation"))
+            summary = str(annotation.get("summary", "")).strip()
+            short_description = str(annotation.get("short_description", "")).strip()
+            document_type = str(annotation.get("document_type", "")).strip()
+
+            caption = summary or short_description or document_type or "Bildquelle aus OCR"
+            ocr_text_parts = [summary, short_description, document_type]
+            ocr_text = "\n".join(part for part in ocr_text_parts if part).strip()
+
+            width = _safe_int(img.get("width"))
+            height = _safe_int(img.get("height"))
+
+            assets.append(
+                {
+                    "asset_type": "embedded_image",
+                    "storage_path": data_uri,
+                    "mime_type": mime_type,
+                    "page_number": page_number,
+                    "width": width,
+                    "height": height,
+                    "caption": caption,
+                    "ocr_text": ocr_text or caption,
+                }
+            )
+
+    return assets
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_json_like(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {}
+    return {}
+
+
+def _image_data_uri_from_ocr_image(image_obj: Dict[str, Any]) -> Tuple[str, str]:
+    if not isinstance(image_obj, dict):
+        return "", ""
+
+    mime_type = str(image_obj.get("mime_type") or "image/png").strip() or "image/png"
+
+    for key in ("image_base64", "base64"):
+        raw = image_obj.get(key)
+        if isinstance(raw, str) and raw.strip():
+            value = raw.strip()
+            if value.startswith("data:image/"):
+                mime_match = re.match(r"^data:([^;]+);base64,", value)
+                if mime_match:
+                    mime_type = mime_match.group(1)
+                return value, mime_type
+            return f"data:{mime_type};base64,{value}", mime_type
+
+    image_id = str(image_obj.get("id", "")).strip()
+    if image_id.startswith("data:image/"):
+        mime_match = re.match(r"^data:([^;]+);base64,", image_id)
+        if mime_match:
+            mime_type = mime_match.group(1)
+        return image_id, mime_type
+
+    return "", ""
 
 
 def create_document(
@@ -535,3 +627,97 @@ def create_document_asset(
         return None
 
     return result.data[0] if result.data else None
+
+
+def create_document_assets(
+    document_id: str,
+    user_id: str,
+    assets: List[Dict[str, Any]],
+    embeddings: Optional[List[Optional[List[float]]]] = None,
+    pool_id: Optional[str] = None,
+) -> int:
+    """Store multiple OCR-derived image assets for a document."""
+    if not assets:
+        return 0
+
+    rows: List[Dict[str, Any]] = []
+    for idx, asset in enumerate(assets):
+        storage_path = str(asset.get("storage_path", "")).strip()
+        if not storage_path:
+            continue
+
+        row: Dict[str, Any] = {
+            "document_id": document_id,
+            "user_id": user_id,
+            "pool_id": pool_id,
+            "page_number": _safe_int(asset.get("page_number")),
+            "asset_type": str(asset.get("asset_type", "embedded_image")).strip() or "embedded_image",
+            "storage_path": storage_path,
+            "mime_type": str(asset.get("mime_type", "image/png")).strip() or "image/png",
+            "width": _safe_int(asset.get("width")),
+            "height": _safe_int(asset.get("height")),
+            "caption": str(asset.get("caption", "")).strip()[:4000],
+            "ocr_text": str(asset.get("ocr_text", "")).strip()[:20000],
+        }
+
+        if embeddings and idx < len(embeddings) and embeddings[idx]:
+            row["embedding"] = str(embeddings[idx])
+
+        rows.append(row)
+
+    if not rows:
+        return 0
+
+    try:
+        result = supabase.table("app_document_assets").insert(rows).execute()
+    except Exception as e:
+        logger.info("Asset batch insert failed (skipping OCR assets): %s", e)
+        return 0
+
+    return len(result.data or [])
+
+
+async def _mistral_ocr_document_with_assets(
+    api_key: str,
+    document_url: str,
+    filename: str,
+    byte_length: int,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    payload = _build_mistral_payload_document(document_url)
+
+    logger.info("OCR via Mistral for %s (%d bytes)", filename, byte_length)
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            "https://api.mistral.ai/v1/ocr",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+
+    if resp.status_code == 422:
+        payload_fallback = _build_mistral_payload_document(document_url, include_type=False)
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://api.mistral.ai/v1/ocr",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload_fallback,
+            )
+
+    if resp.status_code != 200:
+        detail = resp.text[:300]
+        logger.error("Mistral OCR failed (%d): %s", resp.status_code, detail)
+        raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {resp.status_code})")
+
+    data = resp.json()
+    return _extract_text_and_assets_from_mistral_response(data)
+
+
+async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, byte_length: int) -> str:
+    text, _ = await _mistral_ocr_document_with_assets(api_key, document_url, filename, byte_length)
+    return text
