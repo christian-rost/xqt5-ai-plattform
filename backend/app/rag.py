@@ -169,6 +169,29 @@ async def process_document(document_id: str, text: str, user_id: str) -> Tuple[i
     return len(chunks), total_tokens
 
 
+def _rpc_chunks(
+    embedding: List[float],
+    user_id: str,
+    chat_id: Optional[str],
+    pool_id: Optional[str],
+    top_k: int,
+    threshold: float,
+) -> List[Dict[str, Any]]:
+    """Execute match_document_chunks RPC with a pre-computed embedding."""
+    params: Dict[str, Any] = {
+        "query_embedding": str(embedding),
+        "match_user_id": user_id,
+        "match_threshold": threshold,
+        "match_count": top_k,
+    }
+    if chat_id is not None:
+        params["match_chat_id"] = chat_id
+    if pool_id is not None:
+        params["match_pool_id"] = pool_id
+    result = supabase.rpc("match_document_chunks", params).execute()
+    return result.data or []
+
+
 async def search_similar_chunks(
     query: str,
     user_id: str,
@@ -178,24 +201,43 @@ async def search_similar_chunks(
     threshold: float = RAG_SIMILARITY_THRESHOLD,
 ) -> List[Dict[str, Any]]:
     """Search for similar chunks using the Supabase RPC."""
-    # Generate query embedding
     embeddings = await generate_embeddings([query])
-    query_embedding = embeddings[0]
+    return _rpc_chunks(embeddings[0], user_id, chat_id, pool_id, top_k, threshold)
 
-    params = {
-        "query_embedding": str(query_embedding),
-        "match_user_id": user_id,
-        "match_threshold": threshold,
-        "match_count": top_k,
-    }
-    if chat_id is not None:
-        params["match_chat_id"] = chat_id
-    if pool_id is not None:
-        params["match_pool_id"] = pool_id
 
-    result = supabase.rpc("match_document_chunks", params).execute()
+async def _search_chunks_two_phase(
+    query: str,
+    user_id: str,
+    chat_id: str,
+    top_k: int,
+    threshold: float,
+) -> List[Dict[str, Any]]:
+    """Two-phase chunk search for conversation scope.
 
-    return result.data or []
+    Phase 1: conversation-specific documents only (chat_id = conversation_id).
+    Phase 2: supplement with global documents (chat_id IS NULL) if Phase 1
+             returned fewer chunks than requested.
+
+    This prevents global documents from diluting or displacing conversation-
+    specific chunks in the similarity ranking.
+    """
+    embeddings = await generate_embeddings([query])
+    embedding = embeddings[0]
+
+    # Phase 1 — conversation-specific
+    conv_chunks = _rpc_chunks(embedding, user_id, chat_id, None, top_k, threshold)
+    if len(conv_chunks) >= top_k:
+        return conv_chunks
+
+    # Phase 2 — global supplement (chat_id=None → global-only via new SQL)
+    remaining = top_k - len(conv_chunks)
+    global_chunks = _rpc_chunks(embedding, user_id, None, None, remaining, threshold)
+
+    # Deduplicate by document_id (shouldn't overlap, but be safe)
+    seen = {c["document_id"] for c in conv_chunks}
+    global_chunks = [c for c in global_chunks if c["document_id"] not in seen]
+
+    return conv_chunks + global_chunks[:remaining]
 
 
 async def retrieve_chunks_with_strategy(
@@ -220,14 +262,24 @@ async def retrieve_chunks_with_strategy(
         ]
 
     for top_k, threshold in plans:
-        chunks = await search_similar_chunks(
-            query=query,
-            user_id=user_id,
-            chat_id=chat_id,
-            pool_id=pool_id,
-            top_k=top_k,
-            threshold=threshold,
-        )
+        if chat_id is not None:
+            # Two-phase: conversation-first, global supplement
+            chunks = await _search_chunks_two_phase(
+                query=query,
+                user_id=user_id,
+                chat_id=chat_id,
+                top_k=top_k,
+                threshold=threshold,
+            )
+        else:
+            chunks = await search_similar_chunks(
+                query=query,
+                user_id=user_id,
+                chat_id=None,
+                pool_id=pool_id,
+                top_k=top_k,
+                threshold=threshold,
+            )
         logger.info(
             "RAG search: %d chunks found (chat_id=%s, pool_id=%s, threshold=%.2f)",
             len(chunks),
@@ -315,20 +367,17 @@ async def _cohere_rerank(
         return []
 
 
-async def search_similar_assets(
-    query: str,
+def _rpc_assets(
+    embedding: List[float],
     user_id: str,
-    chat_id: Optional[str] = None,
-    pool_id: Optional[str] = None,
-    top_k: int = RAG_TOP_K,
-    threshold: float = RAG_SIMILARITY_THRESHOLD,
+    chat_id: Optional[str],
+    pool_id: Optional[str],
+    top_k: int,
+    threshold: float,
 ) -> List[Dict[str, Any]]:
-    """Search for similar image assets (if multimodal schema is available)."""
-    embeddings = await generate_embeddings([query])
-    query_embedding = embeddings[0]
-
-    params = {
-        "query_embedding": str(query_embedding),
+    """Execute match_document_assets RPC with a pre-computed embedding."""
+    params: Dict[str, Any] = {
+        "query_embedding": str(embedding),
         "match_user_id": user_id,
         "match_threshold": threshold,
         "match_count": top_k,
@@ -337,15 +386,47 @@ async def search_similar_assets(
         params["match_chat_id"] = chat_id
     if pool_id is not None:
         params["match_pool_id"] = pool_id
+    result = supabase.rpc("match_document_assets", params).execute()
+    return result.data or []
 
+
+async def search_similar_assets(
+    query: str,
+    user_id: str,
+    chat_id: Optional[str] = None,
+    pool_id: Optional[str] = None,
+    top_k: int = RAG_TOP_K,
+    threshold: float = RAG_SIMILARITY_THRESHOLD,
+) -> List[Dict[str, Any]]:
+    """Search for similar image assets (if multimodal schema is available).
+
+    For conversation scope (chat_id provided) uses the same two-phase approach
+    as chunk retrieval: conversation-specific assets first, global supplement
+    if needed.
+    """
     try:
-        result = supabase.rpc("match_document_assets", params).execute()
+        embeddings = await generate_embeddings([query])
+        embedding = embeddings[0]
+
+        if chat_id is not None:
+            # Phase 1: conversation-specific assets
+            conv_assets = _rpc_assets(embedding, user_id, chat_id, None, top_k, threshold)
+            if len(conv_assets) >= top_k:
+                return conv_assets
+            # Phase 2: global supplement
+            remaining = top_k - len(conv_assets)
+            global_assets = _rpc_assets(embedding, user_id, None, None, remaining, threshold)
+            seen = {a["document_id"] for a in conv_assets}
+            global_assets = [a for a in global_assets if a["document_id"] not in seen]
+            return conv_assets + global_assets[:remaining]
+
+        # Pool or global-only path
+        return _rpc_assets(embedding, user_id, chat_id, pool_id, top_k, threshold)
+
     except Exception as e:
         # Schema might not be migrated yet in some environments.
         logger.info("Image asset retrieval unavailable: %s", e)
         return []
-
-    return result.data or []
 
 
 def build_rag_context(chunks: List[Dict[str, Any]]) -> str:
