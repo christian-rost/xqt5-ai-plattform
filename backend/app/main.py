@@ -616,7 +616,7 @@ async def send_message(
             if text_context:
                 has_doc_context = True
     except Exception as e:
-        logger.warning(f"RAG injection failed: {e}")
+        logger.warning("RAG injection failed: %s", e, exc_info=True)
 
     # Hard fallback: even if retrieval failed, keep conversation document visibility in context.
     if not has_doc_context:
@@ -1742,7 +1742,7 @@ async def send_pool_message(
             if text_context:
                 has_doc_context = True
     except Exception as e:
-        logger.warning(f"Pool RAG injection failed: {e}")
+        logger.warning("Pool RAG injection failed: %s", e, exc_info=True)
 
     if has_doc_context:
         _apply_document_access_policy(llm_messages)

@@ -185,11 +185,12 @@ async def search_similar_chunks(
     params = {
         "query_embedding": str(query_embedding),
         "match_user_id": user_id,
-        "match_chat_id": chat_id,
         "match_threshold": threshold,
         "match_count": top_k,
     }
-    if pool_id:
+    if chat_id is not None:
+        params["match_chat_id"] = chat_id
+    if pool_id is not None:
         params["match_pool_id"] = pool_id
 
     result = supabase.rpc("match_document_chunks", params).execute()
@@ -227,9 +228,19 @@ async def retrieve_chunks_with_strategy(
             top_k=top_k,
             threshold=threshold,
         )
+        logger.info(
+            "RAG search: %d chunks found (chat_id=%s, pool_id=%s, threshold=%.2f)",
+            len(chunks),
+            chat_id,
+            pool_id,
+            threshold,
+        )
         if chunks:
             return await _apply_optional_rerank(query, chunks, rerank_settings)
 
+    logger.warning(
+        "RAG: no chunks found for query (chat_id=%s, pool_id=%s)", chat_id, pool_id
+    )
     return []
 
 
@@ -319,11 +330,12 @@ async def search_similar_assets(
     params = {
         "query_embedding": str(query_embedding),
         "match_user_id": user_id,
-        "match_chat_id": chat_id,
         "match_threshold": threshold,
         "match_count": top_k,
     }
-    if pool_id:
+    if chat_id is not None:
+        params["match_chat_id"] = chat_id
+    if pool_id is not None:
         params["match_pool_id"] = pool_id
 
     try:
