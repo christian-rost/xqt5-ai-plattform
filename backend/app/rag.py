@@ -229,3 +229,23 @@ def build_rag_context(chunks: List[Dict[str, Any]]) -> str:
         parts.append(f"\n--- Source {i}: {filename} (relevance: {similarity:.0%}) ---\n{content}")
 
     return "\n".join(parts)
+
+
+def build_image_rag_context(assets: List[Dict[str, Any]]) -> str:
+    """Format image asset hits into a compact context string for the LLM."""
+    if not assets:
+        return ""
+
+    parts = ["[Relevant image/document visual context:]"]
+    for i, asset in enumerate(assets, 1):
+        filename = asset.get("filename", "unknown")
+        page = asset.get("page_number")
+        similarity = asset.get("similarity", 0)
+        caption = (asset.get("caption") or "").strip()
+        page_info = f", page {page}" if page is not None else ""
+        parts.append(
+            f"\n--- Visual Source {i}: {filename}{page_info} (relevance: {similarity:.0%}) ---\n"
+            f"{caption or 'No caption available.'}"
+        )
+
+    return "\n".join(parts)

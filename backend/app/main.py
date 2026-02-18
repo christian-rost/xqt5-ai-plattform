@@ -463,12 +463,19 @@ async def send_message(
                 docs_context = _build_available_documents_context(docs)
                 _inject_system_context(llm_messages, docs_context)
 
-            if rag_mod.should_use_image_retrieval(payload.content, image_mode):
+            should_try_images = rag_mod.should_use_image_retrieval(payload.content, image_mode)
+            if not should_try_images and image_mode == "auto" and not chunks:
+                # For generic prompts like "summarize the document", still try visual retrieval
+                should_try_images = True
+
+            if should_try_images:
                 assets = await rag_mod.search_similar_assets(
                     query=payload.content,
                     user_id=current_user["id"],
                     chat_id=conversation_id,
                 )
+                image_context = rag_mod.build_image_rag_context(assets)
+                _inject_system_context(llm_messages, image_context)
                 rag_image_sources = [
                     {
                         "asset_id": a.get("asset_id"),
@@ -1494,12 +1501,18 @@ async def send_pool_message(
                 docs_context = _build_available_documents_context(pool_docs)
                 _inject_system_context(llm_messages, docs_context)
 
-            if rag_mod.should_use_image_retrieval(payload.content, image_mode):
+            should_try_images = rag_mod.should_use_image_retrieval(payload.content, image_mode)
+            if not should_try_images and image_mode == "auto" and not chunks:
+                should_try_images = True
+
+            if should_try_images:
                 assets = await rag_mod.search_similar_assets(
                     query=payload.content,
                     user_id=current_user["id"],
                     pool_id=pool_id,
                 )
+                image_context = rag_mod.build_image_rag_context(assets)
+                _inject_system_context(llm_messages, image_context)
                 rag_image_sources = [
                     {
                         "asset_id": a.get("asset_id"),
