@@ -5,6 +5,13 @@ from .database import supabase
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_RAG_SETTINGS = {
+    "rerank_enabled": False,
+    "rerank_candidates": 20,
+    "rerank_top_n": 6,
+    "rerank_model": "rerank-v3.5",
+}
+
 
 def list_users() -> List[Dict[str, Any]]:
     result = supabase.table("app_users").select(
@@ -211,3 +218,47 @@ def get_default_model_id() -> Optional[str]:
 def delete_model_config(config_id: str) -> bool:
     result = supabase.table("app_model_config").delete().eq("id", config_id).execute()
     return len(result.data) > 0
+
+
+def get_rag_settings() -> Dict[str, Any]:
+    """Load runtime RAG settings from DB with sane defaults."""
+    settings = dict(DEFAULT_RAG_SETTINGS)
+    try:
+        result = supabase.table("app_runtime_config").select("value").eq("key", "rag_settings").limit(1).execute()
+        if result.data:
+            value = result.data[0].get("value") or {}
+            if isinstance(value, dict):
+                settings.update(value)
+    except Exception as e:
+        logger.warning("Failed to load rag settings from DB: %s", e)
+
+    # Normalize types/ranges defensively.
+    settings["rerank_enabled"] = bool(settings.get("rerank_enabled", False))
+    settings["rerank_candidates"] = max(5, min(100, int(settings.get("rerank_candidates", 20))))
+    settings["rerank_top_n"] = max(1, min(30, int(settings.get("rerank_top_n", 6))))
+    settings["rerank_model"] = str(settings.get("rerank_model", "rerank-v3.5")).strip() or "rerank-v3.5"
+    if settings["rerank_top_n"] > settings["rerank_candidates"]:
+        settings["rerank_top_n"] = settings["rerank_candidates"]
+    return settings
+
+
+def update_rag_settings(**fields: Any) -> Dict[str, Any]:
+    current = get_rag_settings()
+    allowed = {"rerank_enabled", "rerank_candidates", "rerank_top_n", "rerank_model"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return current
+
+    merged = {**current, **updates}
+    merged["rerank_enabled"] = bool(merged.get("rerank_enabled", False))
+    merged["rerank_candidates"] = max(5, min(100, int(merged.get("rerank_candidates", 20))))
+    merged["rerank_top_n"] = max(1, min(30, int(merged.get("rerank_top_n", 6))))
+    merged["rerank_model"] = str(merged.get("rerank_model", "rerank-v3.5")).strip() or "rerank-v3.5"
+    if merged["rerank_top_n"] > merged["rerank_candidates"]:
+        merged["rerank_top_n"] = merged["rerank_candidates"]
+
+    row = {"key": "rag_settings", "value": merged}
+    result = supabase.table("app_runtime_config").upsert(row, on_conflict="key").execute()
+    if result.data:
+        return merged
+    return get_rag_settings()

@@ -5,6 +5,7 @@ const TABS = [
   { id: 'users', label: 'Benutzer' },
   { id: 'costs', label: 'Kosten' },
   { id: 'stats', label: 'Statistiken' },
+  { id: 'retrieval', label: 'Retrieval' },
   { id: 'models', label: 'Modelle' },
   { id: 'providers', label: 'Provider' },
   { id: 'audit', label: 'Audit-Logs' },
@@ -38,6 +39,7 @@ export default function AdminDashboard({ onClose, currentUser }) {
         {activeTab === 'users' && <UsersTab currentUser={currentUser} />}
         {activeTab === 'costs' && <CostsTab />}
         {activeTab === 'stats' && <StatsTab />}
+        {activeTab === 'retrieval' && <RetrievalTab />}
         {activeTab === 'models' && <ModelsTab />}
         {activeTab === 'providers' && <ProvidersTab />}
         {activeTab === 'audit' && <AuditTab />}
@@ -388,6 +390,139 @@ function StatsTab() {
           <div className="admin-card-value">{item.value}</div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function RetrievalTab() {
+  const [settings, setSettings] = useState(null)
+  const [form, setForm] = useState({
+    rerank_enabled: false,
+    rerank_candidates: 20,
+    rerank_top_n: 6,
+    rerank_model: 'rerank-v3.5',
+  })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  async function loadSettings() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await api.adminGetRagSettings()
+      setSettings(data)
+      setForm({
+        rerank_enabled: !!data.rerank_enabled,
+        rerank_candidates: data.rerank_candidates ?? 20,
+        rerank_top_n: data.rerank_top_n ?? 6,
+        rerank_model: data.rerank_model || 'rerank-v3.5',
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSave(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const payload = {
+        rerank_enabled: !!form.rerank_enabled,
+        rerank_candidates: Math.max(5, Math.min(100, Number(form.rerank_candidates) || 20)),
+        rerank_top_n: Math.max(1, Math.min(30, Number(form.rerank_top_n) || 6)),
+        rerank_model: (form.rerank_model || 'rerank-v3.5').trim(),
+      }
+      if (payload.rerank_top_n > payload.rerank_candidates) {
+        payload.rerank_top_n = payload.rerank_candidates
+      }
+      const updated = await api.adminUpdateRagSettings(payload)
+      setSettings(updated)
+      setForm({
+        rerank_enabled: !!updated.rerank_enabled,
+        rerank_candidates: updated.rerank_candidates ?? payload.rerank_candidates,
+        rerank_top_n: updated.rerank_top_n ?? payload.rerank_top_n,
+        rerank_model: updated.rerank_model || payload.rerank_model,
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="admin-loading">Laden...</div>
+
+  return (
+    <div>
+      {error && <div className="admin-error">{error}</div>}
+
+      <form className="admin-model-form" onSubmit={handleSave}>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Reranking aktiviert (Cohere)</label>
+            <label className="toggle-switch" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={!!form.rerank_enabled}
+                onChange={() => setForm((f) => ({ ...f, rerank_enabled: !f.rerank_enabled }))}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+          <div className="form-group">
+            <label>Rerank Modell</label>
+            <input
+              className="form-input"
+              value={form.rerank_model}
+              onChange={(e) => setForm((f) => ({ ...f, rerank_model: e.target.value }))}
+              placeholder="rerank-v3.5"
+            />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label>Kandidatenmenge (vor Rerank)</label>
+            <input
+              className="form-input"
+              type="number"
+              min="5"
+              max="100"
+              value={form.rerank_candidates}
+              onChange={(e) => setForm((f) => ({ ...f, rerank_candidates: e.target.value }))}
+            />
+          </div>
+          <div className="form-group">
+            <label>Top-N (nach Rerank)</label>
+            <input
+              className="form-input"
+              type="number"
+              min="1"
+              max="30"
+              value={form.rerank_top_n}
+              onChange={(e) => setForm((f) => ({ ...f, rerank_top_n: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <button className="btn btn-primary btn-small" type="submit" disabled={saving}>
+          {saving ? 'Speichern...' : 'Speichern'}
+        </button>
+      </form>
+
+      {settings && (
+        <div className="provider-hint" style={{ marginTop: 12 }}>
+          Aktive Werte: enabled={String(!!settings.rerank_enabled)}, candidates={settings.rerank_candidates}, top_n={settings.rerank_top_n}, model={settings.rerank_model}
+        </div>
+      )}
     </div>
   )
 }

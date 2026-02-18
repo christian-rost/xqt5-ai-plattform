@@ -203,6 +203,7 @@ async def retrieve_chunks_with_strategy(
     chat_id: Optional[str] = None,
     pool_id: Optional[str] = None,
     intent: str = "fact",
+    rerank_settings: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Adaptive retrieval with fallback passes for generic/summary prompts."""
     plans: List[Tuple[int, float]]
@@ -227,9 +228,80 @@ async def retrieve_chunks_with_strategy(
             threshold=threshold,
         )
         if chunks:
-            return chunks
+            return await _apply_optional_rerank(query, chunks, rerank_settings)
 
     return []
+
+
+async def _apply_optional_rerank(
+    query: str,
+    chunks: List[Dict[str, Any]],
+    rerank_settings: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    settings = rerank_settings or {}
+    enabled = bool(settings.get("rerank_enabled", False))
+    if not enabled or not chunks:
+        return chunks
+
+    candidates = max(5, min(100, int(settings.get("rerank_candidates", 20))))
+    top_n = max(1, min(30, int(settings.get("rerank_top_n", 6))))
+    model = str(settings.get("rerank_model", "rerank-v3.5")).strip() or "rerank-v3.5"
+    if top_n > candidates:
+        top_n = candidates
+
+    key = providers_mod.get_api_key("cohere")
+    if not key:
+        logger.warning("Rerank enabled but no Cohere key configured; using vector ranking only")
+        return chunks[:top_n]
+
+    subset = chunks[:candidates]
+    reranked = await _cohere_rerank(query, subset, key, model=model, top_n=top_n)
+    return reranked or subset[:top_n]
+
+
+async def _cohere_rerank(
+    query: str,
+    chunks: List[Dict[str, Any]],
+    api_key: str,
+    model: str,
+    top_n: int,
+) -> List[Dict[str, Any]]:
+    if not chunks:
+        return []
+
+    documents = [str(c.get("content", ""))[:8000] for c in chunks]
+    payload = {
+        "model": model,
+        "query": query,
+        "documents": documents,
+        "top_n": min(top_n, len(documents)),
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post("https://api.cohere.com/v2/rerank", headers=headers, json=payload)
+        if resp.status_code != 200:
+            logger.warning("Cohere rerank failed with HTTP %s: %s", resp.status_code, resp.text[:300])
+            return []
+        data = resp.json()
+        results = data.get("results", []) or []
+        reranked: List[Dict[str, Any]] = []
+        for r in results:
+            idx = r.get("index")
+            if idx is None or idx < 0 or idx >= len(chunks):
+                continue
+            chunk = dict(chunks[idx])
+            if "relevance_score" in r:
+                chunk["rerank_score"] = float(r["relevance_score"])
+            reranked.append(chunk)
+        return reranked
+    except Exception as e:
+        logger.warning("Cohere rerank exception: %s", e)
+        return []
 
 
 async def search_similar_assets(

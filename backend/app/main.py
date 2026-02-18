@@ -45,6 +45,7 @@ from .models import (
     RegisterRequest,
     SendMessageRequest,
     SendPoolMessageRequest,
+    UpdateRagSettingsRequest,
     UpdateAssistantRequest,
     UpdateConversationRequest,
     UpdateModelConfigRequest,
@@ -472,11 +473,13 @@ async def send_message(
     has_doc_context = False
     try:
         query_intent = rag_mod.detect_query_intent(payload.content)
+        rag_settings = admin_crud.get_rag_settings()
         chunks = await rag_mod.retrieve_chunks_with_strategy(
             query=payload.content,
             user_id=current_user["id"],
             chat_id=conversation_id,
             intent=query_intent,
+            rerank_settings=rag_settings,
         )
         if chunks:
             rag_context = rag_mod.build_rag_context(chunks)
@@ -1013,6 +1016,29 @@ async def admin_get_stats(admin: Dict = Depends(get_current_admin)):
     return admin_crud.get_system_stats()
 
 
+@app.get("/api/admin/rag-settings", response_model=None)
+async def admin_get_rag_settings(admin: Dict = Depends(get_current_admin)):
+    del admin
+    return admin_crud.get_rag_settings()
+
+
+@app.patch("/api/admin/rag-settings", response_model=None)
+async def admin_update_rag_settings(
+    request: UpdateRagSettingsRequest,
+    admin: Dict = Depends(get_current_admin),
+):
+    updates = request.model_dump(exclude_none=True)
+    settings = admin_crud.update_rag_settings(**updates)
+    audit.log_event(
+        "admin.rag_settings.update",
+        user_id=admin["id"],
+        target_type="rag_settings",
+        target_id="rag_settings",
+        metadata=updates,
+    )
+    return settings
+
+
 @app.get("/api/admin/models", response_model=None)
 async def admin_list_models(admin: Dict = Depends(get_current_admin)):
     return admin_crud.list_model_configs()
@@ -1537,11 +1563,13 @@ async def send_pool_message(
     has_doc_context = False
     try:
         query_intent = rag_mod.detect_query_intent(payload.content)
+        rag_settings = admin_crud.get_rag_settings()
         chunks = await rag_mod.retrieve_chunks_with_strategy(
             query=payload.content,
             user_id=current_user["id"],
             pool_id=pool_id,
             intent=query_intent,
+            rerank_settings=rag_settings,
         )
         if chunks:
             rag_context = rag_mod.build_rag_context(chunks)

@@ -10,7 +10,7 @@ from .encryption import decrypt_value, encrypt_value
 logger = logging.getLogger(__name__)
 
 # Known providers and their env-var key names
-KNOWN_PROVIDERS = ["openai", "anthropic", "google", "mistral", "x-ai", "azure"]
+KNOWN_PROVIDERS = ["openai", "anthropic", "google", "mistral", "x-ai", "azure", "cohere"]
 
 PROVIDER_DISPLAY = {
     "openai": "OpenAI",
@@ -19,6 +19,7 @@ PROVIDER_DISPLAY = {
     "mistral": "Mistral",
     "x-ai": "xAI",
     "azure": "Azure OpenAI",
+    "cohere": "Cohere",
 }
 
 
@@ -159,6 +160,8 @@ async def test_provider(provider: str) -> Dict[str, Any]:
 
     if provider == "azure":
         return await _test_azure(key)
+    if provider == "cohere":
+        return await _test_cohere(key)
 
     config = PROVIDER_CONFIG.get(provider)
     if not config:
@@ -244,6 +247,35 @@ async def _test_azure(api_key: str) -> Dict[str, Any]:
                     "success": False,
                     "error": f"HTTP {resp.status_code} für {url[:120]}... — {resp.text[:300]}",
                 }
+    except httpx.TimeoutException:
+        return {"success": False, "error": "Timeout bei der Verbindung"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def _test_cohere(api_key: str) -> Dict[str, Any]:
+    """Test Cohere connectivity using a minimal rerank request."""
+    payload = {
+        "model": "rerank-v3.5",
+        "query": "test",
+        "documents": ["test document"],
+        "top_n": 1,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post("https://api.cohere.com/v2/rerank", headers=headers, json=payload)
+            if resp.status_code == 200:
+                return {"success": True, "message": "Verbindung erfolgreich"}
+            if resp.status_code == 401:
+                return {"success": False, "error": "Ungültiger API-Key"}
+            return {
+                "success": False,
+                "error": f"HTTP {resp.status_code}: {resp.text[:300]}",
+            }
     except httpx.TimeoutException:
         return {"success": False, "error": "Timeout bei der Verbindung"}
     except Exception as e:

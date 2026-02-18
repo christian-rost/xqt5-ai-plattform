@@ -299,6 +299,25 @@ export const api = {
     return response.json()
   },
 
+  async adminGetRagSettings() {
+    const response = await authFetch(`${API_BASE}/api/admin/rag-settings`)
+    if (!response.ok) throw new Error('Konnte RAG-Einstellungen nicht laden')
+    return response.json()
+  },
+
+  async adminUpdateRagSettings(data) {
+    const response = await authFetch(`${API_BASE}/api/admin/rag-settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte RAG-Einstellungen nicht speichern')
+    }
+    return response.json()
+  },
+
   async adminListModels() {
     const response = await authFetch(`${API_BASE}/api/admin/models`)
     if (!response.ok) throw new Error('Konnte Modell-Konfigurationen nicht laden')

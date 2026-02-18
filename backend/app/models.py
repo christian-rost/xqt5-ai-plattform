@@ -135,6 +135,14 @@ class UpdateModelConfigRequest(BaseModel):
     deployment_name: Optional[str] = None
 
 
+# Runtime RAG settings
+class UpdateRagSettingsRequest(BaseModel):
+    rerank_enabled: Optional[bool] = None
+    rerank_candidates: Optional[int] = Field(default=None, ge=5, le=100)
+    rerank_top_n: Optional[int] = Field(default=None, ge=1, le=30)
+    rerank_model: Optional[str] = None
+
+
 # Pool models
 class CreatePoolRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)

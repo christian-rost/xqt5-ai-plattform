@@ -18,6 +18,7 @@ PROVIDER_KEYS = {
     "mistral": os.getenv("MISTRAL_API_KEY", ""),
     "x-ai": os.getenv("XAI_API_KEY", ""),
     "azure": os.getenv("AZURE_OPENAI_API_KEY", ""),
+    "cohere": os.getenv("COHERE_API_KEY", ""),
 }
 
 AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
