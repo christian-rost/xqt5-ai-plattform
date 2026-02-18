@@ -1,5 +1,4 @@
 import base64
-import io
 import logging
 import json
 import re
@@ -12,7 +11,6 @@ from .database import supabase
 
 logger = logging.getLogger(__name__)
 
-OCR_MIN_CHARS = 50
 IMAGE_MIME_BY_EXT = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -37,23 +35,11 @@ def guess_image_mime(filename: str) -> str:
 async def extract_text(filename: str, file_bytes: bytes) -> str:
     """Extract text from PDF or TXT file.
 
-    For PDFs, tries pypdf first. If fewer than OCR_MIN_CHARS characters are
-    extracted (e.g. scanned PDFs), falls back to Mistral OCR API.
+    PDFs and images are always processed via Mistral OCR.
     """
     lower = filename.lower()
     if lower.endswith(".pdf"):
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(file_bytes))
-        pages = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                pages.append(text)
-        result = "\n\n".join(pages)
-        if len(result.strip()) < OCR_MIN_CHARS:
-            logger.info("pypdf extracted < %d chars for %s, trying Mistral OCR", OCR_MIN_CHARS, filename)
-            result = await _ocr_pdf_mistral(file_bytes, filename)
-        return result
+        return await _ocr_pdf_mistral(file_bytes, filename)
     elif lower.endswith(".txt"):
         return file_bytes.decode("utf-8", errors="replace")
     elif is_supported_image(lower):
