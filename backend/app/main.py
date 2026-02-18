@@ -350,6 +350,27 @@ def _apply_image_source_policy(llm_messages: List[Dict[str, str]], image_mode: s
     _inject_system_context(llm_messages, policy)
 
 
+def _build_available_documents_context(docs: List[Dict]) -> str:
+    """Build a fallback context listing available ready documents."""
+    ready_names = []
+    seen = set()
+    for doc in docs or []:
+        if doc.get("status") != "ready":
+            continue
+        name = (doc.get("filename") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        ready_names.append(name)
+
+    if not ready_names:
+        return ""
+
+    lines = ["[Available documents in this workspace:]"]
+    lines.extend(f"- {name}" for name in ready_names[:50])
+    return "\n".join(lines)
+
+
 async def _auto_name_conversation(conversation_id: str, user_message: str) -> None:
     """Generate a short title for the conversation using the LLM."""
     try:
@@ -433,6 +454,14 @@ async def send_message(
                     for c in chunks
                 ]
                 _inject_system_context(llm_messages, rag_context)
+            else:
+                docs = documents_mod.list_documents(
+                    user_id=current_user["id"],
+                    chat_id=conversation_id,
+                    scope="all",
+                )
+                docs_context = _build_available_documents_context(docs)
+                _inject_system_context(llm_messages, docs_context)
 
             if rag_mod.should_use_image_retrieval(payload.content, image_mode):
                 assets = await rag_mod.search_similar_assets(
@@ -1460,6 +1489,10 @@ async def send_pool_message(
                     for c in chunks
                 ]
                 _inject_system_context(llm_messages, rag_context)
+            else:
+                pool_docs = pools_mod.list_pool_documents(pool_id)
+                docs_context = _build_available_documents_context(pool_docs)
+                _inject_system_context(llm_messages, docs_context)
 
             if rag_mod.should_use_image_retrieval(payload.content, image_mode):
                 assets = await rag_mod.search_similar_assets(
