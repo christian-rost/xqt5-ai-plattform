@@ -644,6 +644,45 @@ def list_ready_document_texts(
     return result.data or []
 
 
+def list_ready_chat_document_texts(
+    user_id: str,
+    chat_id: str,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """Return ready texts for a specific conversation only."""
+    result = (
+        supabase.table("app_documents")
+        .select("id,filename,extracted_text,chat_id,created_at")
+        .eq("user_id", user_id)
+        .eq("status", "ready")
+        .is_("pool_id", "null")
+        .eq("chat_id", chat_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
+
+
+def list_ready_global_document_texts(
+    user_id: str,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """Return ready texts from the user's global knowledge base (non-chat, non-pool)."""
+    result = (
+        supabase.table("app_documents")
+        .select("id,filename,extracted_text,chat_id,created_at")
+        .eq("user_id", user_id)
+        .eq("status", "ready")
+        .is_("pool_id", "null")
+        .is_("chat_id", "null")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
+
+
 def list_ready_pool_document_texts(
     pool_id: str,
     limit: int = 3,

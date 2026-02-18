@@ -534,7 +534,7 @@ async def send_message(
             docs = documents_mod.list_documents(
                 user_id=current_user["id"],
                 chat_id=conversation_id,
-                scope="all",
+                scope="chat",
             )
             docs_context = _build_available_documents_context(docs)
             _inject_system_context(llm_messages, docs_context)
@@ -572,12 +572,20 @@ async def send_message(
             ]
 
         if not has_doc_context:
-            text_rows = documents_mod.list_ready_document_texts(
+            chat_rows = documents_mod.list_ready_chat_document_texts(
                 user_id=current_user["id"],
                 chat_id=conversation_id,
                 limit=3,
             )
-            text_context = _build_document_text_fallback_context(text_rows)
+            global_rows = documents_mod.list_ready_global_document_texts(
+                user_id=current_user["id"],
+                limit=2,
+            )
+            combined_rows = chat_rows + [
+                r for r in global_rows
+                if r.get("id") not in {c.get("id") for c in chat_rows}
+            ]
+            text_context = _build_document_text_fallback_context(combined_rows)
             _inject_system_context(llm_messages, text_context)
             if text_context:
                 has_doc_context = True
