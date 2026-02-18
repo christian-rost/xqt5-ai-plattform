@@ -15,6 +15,8 @@ Grundgerüst für eine AI-Hub-Anwendung mit:
 - `backend/` FastAPI API (LLM-Provider unter `app/llm.py`)
 - `supabase/migrations/` SQL-Migrationen
 - `docs/` Produkt-, Umsetzungs- und Coding-Dokumentation
+  - Anwender-Doku: `docs/ANWENDER-DOKUMENT.md`
+  - Anwender-Quickstart: `docs/ANWENDER-QUICKSTART.md`
 
 ## Features (Phase A)
 - Multi-Provider LLM Chat (OpenAI, Anthropic, Google, Mistral, X.AI)

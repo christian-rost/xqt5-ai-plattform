@@ -23,7 +23,7 @@ export default function FileUpload({ chatId, onUploadComplete, disabled }) {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.txt"
+        accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
@@ -32,7 +32,7 @@ export default function FileUpload({ chatId, onUploadComplete, disabled }) {
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={disabled || uploading}
-        title="Upload PDF or TXT"
+        title="Upload PDF, TXT or image"
       >
         {uploading ? '...' : '\u{1F4CE}'}
       </button>

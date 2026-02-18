@@ -18,6 +18,25 @@ from .token_tracking import record_usage
 
 logger = logging.getLogger(__name__)
 
+IMAGE_QUERY_KEYWORDS = {
+    "image", "images", "picture", "pictures", "photo", "photos", "figure", "figures",
+    "chart", "charts", "graph", "graphs", "diagram", "diagrams", "screenshot", "screenshots",
+    "bild", "bilder", "grafik", "grafiken", "abbildung", "abbildungen", "diagramm", "diagramme",
+    "chartanalyse", "visual", "visuell", "tabellenbild", "plot",
+}
+
+
+def should_use_image_retrieval(query: str, image_mode: str) -> bool:
+    """Decide whether image retrieval should run for a query."""
+    mode = (image_mode or "auto").lower()
+    if mode == "off":
+        return False
+    if mode == "on":
+        return True
+
+    q = (query or "").lower()
+    return any(keyword in q for keyword in IMAGE_QUERY_KEYWORDS)
+
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     """Split text into chunks, preferring paragraph boundaries."""
@@ -161,6 +180,38 @@ async def search_similar_chunks(
         params["match_pool_id"] = pool_id
 
     result = supabase.rpc("match_document_chunks", params).execute()
+
+    return result.data or []
+
+
+async def search_similar_assets(
+    query: str,
+    user_id: str,
+    chat_id: Optional[str] = None,
+    pool_id: Optional[str] = None,
+    top_k: int = RAG_TOP_K,
+    threshold: float = RAG_SIMILARITY_THRESHOLD,
+) -> List[Dict[str, Any]]:
+    """Search for similar image assets (if multimodal schema is available)."""
+    embeddings = await generate_embeddings([query])
+    query_embedding = embeddings[0]
+
+    params = {
+        "query_embedding": str(query_embedding),
+        "match_user_id": user_id,
+        "match_chat_id": chat_id,
+        "match_threshold": threshold,
+        "match_count": top_k,
+    }
+    if pool_id:
+        params["match_pool_id"] = pool_id
+
+    try:
+        result = supabase.rpc("match_document_assets", params).execute()
+    except Exception as e:
+        # Schema might not be migrated yet in some environments.
+        logger.info("Image asset retrieval unavailable: %s", e)
+        return []
 
     return result.data or []
 

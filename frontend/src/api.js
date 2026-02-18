@@ -166,11 +166,11 @@ export const api = {
     return response.json()
   },
 
-  async sendMessage(id, content, model, temperature) {
+  async sendMessage(id, content, model, temperature, imageMode = 'auto') {
     const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, model, temperature, stream: false }),
+      body: JSON.stringify({ content, model, temperature, image_mode: imageMode, stream: false }),
     })
     if (!response.ok) throw new Error('Konnte Nachricht nicht senden')
     return response.json()
@@ -594,21 +594,21 @@ export const api = {
     return response.json()
   },
 
-  async sendPoolMessage(poolId, chatId, content, model, temperature) {
+  async sendPoolMessage(poolId, chatId, content, model, temperature, imageMode = 'auto') {
     const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats/${chatId}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, model, temperature, stream: false }),
+      body: JSON.stringify({ content, model, temperature, image_mode: imageMode, stream: false }),
     })
     if (!response.ok) throw new Error('Konnte Nachricht nicht senden')
     return response.json()
   },
 
-  async sendPoolMessageStream(poolId, chatId, content, model, temperature, onDelta, onDone, onError) {
+  async sendPoolMessageStream(poolId, chatId, content, model, temperature, imageMode, onDelta, onDone, onError) {
     const response = await authFetch(`${API_BASE}/api/pools/${poolId}/chats/${chatId}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, model, temperature, stream: true }),
+      body: JSON.stringify({ content, model, temperature, image_mode: imageMode || 'auto', stream: true }),
     })
 
     if (!response.ok) {
@@ -640,7 +640,7 @@ export const api = {
             onDelta(data.delta)
           }
           if (data.done) {
-            await onDone(data.content, data.sources || [])
+            await onDone(data.content, data.sources || [], data.image_sources || [])
             return
           }
         } catch {
@@ -659,11 +659,11 @@ export const api = {
   },
 
   // Streaming (existing)
-  async sendMessageStream(id, content, model, temperature, onDelta, onDone, onError) {
+  async sendMessageStream(id, content, model, temperature, imageMode, onDelta, onDone, onError) {
     const response = await authFetch(`${API_BASE}/api/conversations/${id}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, model, temperature, stream: true }),
+      body: JSON.stringify({ content, model, temperature, image_mode: imageMode || 'auto', stream: true }),
     })
 
     if (!response.ok) {
@@ -695,7 +695,7 @@ export const api = {
             onDelta(data.delta)
           }
           if (data.done) {
-            await onDone(data.content, data.sources || [])
+            await onDone(data.content, data.sources || [], data.image_sources || [])
             return
           }
         } catch {

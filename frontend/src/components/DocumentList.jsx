@@ -10,7 +10,7 @@ export default function DocumentList({ documents, onDelete }) {
           title={doc.error_message || `${doc.chunk_count} chunks`}
         >
           <span className="doc-icon">
-            {doc.file_type === 'pdf' ? '\u{1F4C4}' : '\u{1F4DD}'}
+            {doc.file_type === 'pdf' ? '\u{1F4C4}' : (doc.file_type === 'image' ? '\u{1F5BC}\u{FE0F}' : '\u{1F4DD}')}
           </span>
           <span className="doc-name">{doc.filename}</span>
           {doc.status === 'ready' && (

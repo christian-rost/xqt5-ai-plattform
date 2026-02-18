@@ -9,6 +9,7 @@ export default function MessageInput({
   models,
   selectedModel,
   temperature,
+  imageMode,
   loading,
   templates,
   chatId,
@@ -16,6 +17,7 @@ export default function MessageInput({
   onSend,
   onModelChange,
   onTemperatureChange,
+  onImageModeChange,
   onUpload,
   onDeleteDocument,
 }) {
@@ -51,6 +53,18 @@ export default function MessageInput({
           temperature={temperature}
           onChange={onTemperatureChange}
         />
+        <div className="model-selector">
+          <label className="model-label">Bildquellen</label>
+          <select
+            className="model-select"
+            value={imageMode || 'auto'}
+            onChange={(e) => onImageModeChange?.(e.target.value)}
+          >
+            <option value="auto">Auto</option>
+            <option value="on">Ein</option>
+            <option value="off">Aus</option>
+          </select>
+        </div>
         <TemplatePicker
           templates={templates}
           onSelect={handleInsertTemplate}

@@ -22,6 +22,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODEL)
   const [defaultModelId, setDefaultModelId] = useState(FALLBACK_MODEL)
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
+  const [imageMode, setImageMode] = useState('auto')
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState(null)
   const [error, setError] = useState('')
@@ -252,10 +253,11 @@ export default function App() {
         content,
         selectedModel,
         temperature,
+        imageMode,
         (delta) => {
           setStreamingContent((prev) => (prev || '') + delta)
         },
-        async (fullContent, sources) => {
+        async (fullContent, sources, imageSources) => {
           // Stream complete — finalize
           setStreamingContent(null)
           setLoading(false)
@@ -263,10 +265,15 @@ export default function App() {
           // Refresh conversation to get stored messages
           const updated = await api.getConversation(activeConversation.id)
           // Attach RAG sources to the last assistant message
-          if (sources && sources.length > 0 && updated.messages) {
+          if (updated.messages) {
             const lastMsg = updated.messages[updated.messages.length - 1]
             if (lastMsg && lastMsg.role === 'assistant') {
-              lastMsg.sources = sources
+              if (sources && sources.length > 0) {
+                lastMsg.sources = sources
+              }
+              if (imageSources && imageSources.length > 0) {
+                lastMsg.image_sources = imageSources
+              }
             }
           }
           setActiveConversation(updated)
@@ -442,6 +449,7 @@ export default function App() {
           models={models}
           selectedModel={selectedModel}
           temperature={temperature}
+          imageMode={imageMode}
           loading={loading}
           streamingContent={streamingContent}
           error={error}
@@ -450,6 +458,7 @@ export default function App() {
           onSend={onSendMessage}
           onModelChange={onModelChange}
           onTemperatureChange={onTemperatureChange}
+          onImageModeChange={setImageMode}
           onUpload={handleUploadDocument}
           onDeleteDocument={handleDeleteDocument}
         />

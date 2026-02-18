@@ -10,6 +10,25 @@ from .database import supabase
 logger = logging.getLogger(__name__)
 
 OCR_MIN_CHARS = 50
+IMAGE_MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+def is_supported_image(filename: str) -> bool:
+    lower = (filename or "").lower()
+    return any(lower.endswith(ext) for ext in IMAGE_MIME_BY_EXT)
+
+
+def guess_image_mime(filename: str) -> str:
+    lower = (filename or "").lower()
+    for ext, mime in IMAGE_MIME_BY_EXT.items():
+        if lower.endswith(ext):
+            return mime
+    return "image/png"
 
 
 async def extract_text(filename: str, file_bytes: bytes) -> str:
@@ -34,6 +53,8 @@ async def extract_text(filename: str, file_bytes: bytes) -> str:
         return result
     elif lower.endswith(".txt"):
         return file_bytes.decode("utf-8", errors="replace")
+    elif is_supported_image(lower):
+        return await _ocr_image_mistral(file_bytes, filename, guess_image_mime(filename))
     else:
         raise ValueError(f"Unsupported file type: {filename}")
 
@@ -51,7 +72,26 @@ async def _ocr_pdf_mistral(file_bytes: bytes, filename: str) -> str:
 
     b64 = base64.b64encode(file_bytes).decode("ascii")
     document_url = f"data:application/pdf;base64,{b64}"
+    return await _mistral_ocr_document(api_key, document_url, filename, len(file_bytes))
 
+
+async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -> str:
+    """Run OCR / visual extraction on a single image via Mistral OCR API."""
+    from . import providers as providers_mod
+
+    api_key = providers_mod.get_api_key("mistral")
+    if not api_key:
+        raise ValueError(
+            "Mistral API-Key nicht konfiguriert — Bilder können nicht verarbeitet werden. "
+            "Bitte Key unter Admin > Provider hinterlegen."
+        )
+
+    b64 = base64.b64encode(file_bytes).decode("ascii")
+    document_url = f"data:{mime_type};base64,{b64}"
+    return await _mistral_ocr_document(api_key, document_url, filename, len(file_bytes))
+
+
+async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, byte_length: int) -> str:
     payload = {
         "model": "mistral-ocr-latest",
         "document": {
@@ -60,7 +100,7 @@ async def _ocr_pdf_mistral(file_bytes: bytes, filename: str) -> str:
         },
     }
 
-    logger.info("OCR via Mistral for %s (%d bytes)", filename, len(file_bytes))
+    logger.info("OCR via Mistral for %s (%d bytes)", filename, byte_length)
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
@@ -168,3 +208,42 @@ def has_ready_documents(user_id: str, chat_id: Optional[str] = None) -> bool:
 
     result = query.limit(1).execute()
     return bool(result.data)
+
+
+def create_document_asset(
+    document_id: str,
+    user_id: str,
+    file_bytes: bytes,
+    mime_type: str,
+    filename: str,
+    caption: str,
+    ocr_text: str,
+    embedding: Optional[List[float]] = None,
+    pool_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Store an inline image asset for multimodal retrieval.
+
+    Uses a data URI in storage_path as MVP, so no separate object storage is required.
+    """
+    data_b64 = base64.b64encode(file_bytes).decode("ascii")
+    storage_path = f"data:{mime_type};base64,{data_b64}"
+    row: Dict[str, Any] = {
+        "document_id": document_id,
+        "user_id": user_id,
+        "pool_id": pool_id,
+        "asset_type": "upload_image",
+        "storage_path": storage_path,
+        "mime_type": mime_type,
+        "caption": (caption or "")[:4000],
+        "ocr_text": (ocr_text or "")[:20000],
+    }
+    if embedding:
+        row["embedding"] = str(embedding)
+
+    try:
+        result = supabase.table("app_document_assets").insert(row).execute()
+    except Exception as e:
+        logger.info("Asset table unavailable or insert failed (skipping image asset): %s", e)
+        return None
+
+    return result.data[0] if result.data else None

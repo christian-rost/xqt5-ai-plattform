@@ -67,6 +67,21 @@ from .token_tracking import record_usage
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="XQT5 AI-Workplace API")
+SUPPORTED_UPLOAD_EXTENSIONS = (".pdf", ".txt", ".png", ".jpg", ".jpeg", ".webp")
+
+
+def _is_supported_upload_file(filename: str) -> bool:
+    lower = (filename or "").lower()
+    return any(lower.endswith(ext) for ext in SUPPORTED_UPLOAD_EXTENSIONS)
+
+
+def _resolve_file_type(filename: str) -> str:
+    lower = (filename or "").lower()
+    if lower.endswith(".pdf"):
+        return "pdf"
+    if lower.endswith(".txt"):
+        return "txt"
+    return "image"
 
 
 def _rate_limit_key(request: Request) -> str:
@@ -310,6 +325,31 @@ def _build_llm_messages(
     return llm_messages
 
 
+def _inject_system_context(llm_messages: List[Dict[str, str]], context: str) -> None:
+    """Append context to existing system message or create one."""
+    if not context:
+        return
+    if llm_messages and llm_messages[0]["role"] == "system":
+        llm_messages[0]["content"] += "\n\n" + context
+    else:
+        llm_messages.insert(0, {"role": "system", "content": context})
+
+
+def _apply_image_source_policy(llm_messages: List[Dict[str, str]], image_mode: str) -> None:
+    """Inject automatic image-source grounding rules into the prompt."""
+    mode = (image_mode or "auto").lower()
+    if mode == "off":
+        return
+
+    policy = (
+        "IMAGE SOURCE POLICY:\n"
+        "- Mention image/chart/diagram references only when semantically relevant to the answer.\n"
+        "- If no relevant image evidence exists, do not mention image sources.\n"
+        "- Prefer text evidence if image relevance is weak."
+    )
+    _inject_system_context(llm_messages, policy)
+
+
 async def _auto_name_conversation(conversation_id: str, user_message: str) -> None:
     """Generate a short title for the conversation using the LLM."""
     try:
@@ -373,6 +413,10 @@ async def send_message(
     llm_messages = _build_llm_messages(conversation.get("messages", []), system_prompt=system_prompt)
     llm_messages.append({"role": "user", "content": payload.content})
 
+    image_mode = (payload.image_mode or "auto").lower()
+    rag_image_sources = []
+    _apply_image_source_policy(llm_messages, image_mode)
+
     # RAG: inject relevant document context
     rag_sources = []
     try:
@@ -388,11 +432,26 @@ async def send_message(
                     {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
                     for c in chunks
                 ]
-                # Inject as system message (or append to existing system prompt)
-                if llm_messages and llm_messages[0]["role"] == "system":
-                    llm_messages[0]["content"] += "\n\n" + rag_context
-                else:
-                    llm_messages.insert(0, {"role": "system", "content": rag_context})
+                _inject_system_context(llm_messages, rag_context)
+
+            if rag_mod.should_use_image_retrieval(payload.content, image_mode):
+                assets = await rag_mod.search_similar_assets(
+                    query=payload.content,
+                    user_id=current_user["id"],
+                    chat_id=conversation_id,
+                )
+                rag_image_sources = [
+                    {
+                        "asset_id": a.get("asset_id"),
+                        "document_id": a.get("document_id"),
+                        "filename": a.get("filename"),
+                        "page_number": a.get("page_number"),
+                        "caption": a.get("caption"),
+                        "url": a.get("storage_path"),
+                        "similarity": round(a.get("similarity", 0), 3),
+                    }
+                    for a in assets
+                ]
     except Exception as e:
         logger.warning(f"RAG injection failed: {e}")
 
@@ -402,6 +461,7 @@ async def send_message(
                 conversation_id, llm_messages, model, temperature,
                 is_first_message, payload.content, current_user["id"],
                 rag_sources=rag_sources,
+                rag_image_sources=rag_image_sources,
             ),
             media_type="text/event-stream",
             headers={
@@ -451,6 +511,8 @@ async def send_message(
         raise HTTPException(status_code=500, detail="Failed to load updated conversation")
     if rag_sources:
         updated["rag_sources"] = rag_sources
+    if rag_image_sources:
+        updated["rag_image_sources"] = rag_image_sources
     return updated
 
 
@@ -463,6 +525,7 @@ async def _stream_response(
     user_content: str,
     user_id: str,
     rag_sources: Optional[List[Dict]] = None,
+    rag_image_sources: Optional[List[Dict]] = None,
 ):
     full_content = ""
     usage = {}
@@ -502,6 +565,8 @@ async def _stream_response(
         done_data = {'done': True, 'content': full_content}
         if rag_sources:
             done_data['sources'] = rag_sources
+        if rag_image_sources:
+            done_data['image_sources'] = rag_image_sources
         yield f"data: {json.dumps(done_data)}\n\n"
 
         # Auto-name in background after stream completes
@@ -667,8 +732,8 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
     lower = file.filename.lower()
-    if not (lower.endswith(".pdf") or lower.endswith(".txt")):
-        raise HTTPException(status_code=400, detail="Only PDF and TXT files are supported")
+    if not _is_supported_upload_file(lower):
+        raise HTTPException(status_code=400, detail="Only PDF, TXT, PNG, JPG, JPEG and WEBP files are supported")
 
     # Read and validate size
     file_bytes = await file.read()
@@ -690,7 +755,7 @@ async def upload_document(
     if not extracted_text.strip():
         raise HTTPException(status_code=422, detail="No text could be extracted from file")
 
-    file_type = "pdf" if lower.endswith(".pdf") else "txt"
+    file_type = _resolve_file_type(file.filename)
 
     # Create document record
     doc = documents_mod.create_document(
@@ -709,6 +774,23 @@ async def upload_document(
         )
         doc["chunk_count"] = chunk_count
         doc["status"] = "ready"
+
+        if file_type == "image":
+            try:
+                embedding_input = (extracted_text or "").strip()[:4000] or file.filename
+                embeddings = await rag_mod.generate_embeddings([embedding_input])
+                documents_mod.create_document_asset(
+                    document_id=doc["id"],
+                    user_id=current_user["id"],
+                    file_bytes=file_bytes,
+                    mime_type=documents_mod.guess_image_mime(file.filename),
+                    filename=file.filename,
+                    caption=embedding_input[:1000],
+                    ocr_text=extracted_text,
+                    embedding=embeddings[0] if embeddings else None,
+                )
+            except Exception as e:
+                logger.warning("Image asset indexing failed for %s: %s", doc["id"], e)
     except Exception as e:
         logger.error(f"RAG processing failed for {doc['id']}: {e}")
         doc["status"] = "error"
@@ -1199,8 +1281,8 @@ async def upload_pool_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
     lower = file.filename.lower()
-    if not (lower.endswith(".pdf") or lower.endswith(".txt")):
-        raise HTTPException(status_code=400, detail="Only PDF and TXT files are supported")
+    if not _is_supported_upload_file(lower):
+        raise HTTPException(status_code=400, detail="Only PDF, TXT, PNG, JPG, JPEG and WEBP files are supported")
 
     file_bytes = await file.read()
     max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
@@ -1215,7 +1297,7 @@ async def upload_pool_document(
     if not extracted_text.strip():
         raise HTTPException(status_code=422, detail="No text could be extracted from file")
 
-    file_type = "pdf" if lower.endswith(".pdf") else "txt"
+    file_type = _resolve_file_type(file.filename)
 
     doc = documents_mod.create_document(
         user_id=current_user["id"],
@@ -1233,6 +1315,24 @@ async def upload_pool_document(
         )
         doc["chunk_count"] = chunk_count
         doc["status"] = "ready"
+
+        if file_type == "image":
+            try:
+                embedding_input = (extracted_text or "").strip()[:4000] or file.filename
+                embeddings = await rag_mod.generate_embeddings([embedding_input])
+                documents_mod.create_document_asset(
+                    document_id=doc["id"],
+                    user_id=current_user["id"],
+                    file_bytes=file_bytes,
+                    mime_type=documents_mod.guess_image_mime(file.filename),
+                    filename=file.filename,
+                    caption=embedding_input[:1000],
+                    ocr_text=extracted_text,
+                    embedding=embeddings[0] if embeddings else None,
+                    pool_id=pool_id,
+                )
+            except Exception as e:
+                logger.warning("Pool image asset indexing failed for %s: %s", doc["id"], e)
     except Exception as e:
         logger.error(f"RAG processing failed for pool doc {doc['id']}: {e}")
         doc["status"] = "error"
@@ -1340,6 +1440,10 @@ async def send_pool_message(
     llm_messages = _build_llm_messages(chat.get("messages", []))
     llm_messages.append({"role": "user", "content": payload.content})
 
+    image_mode = (payload.image_mode or "auto").lower()
+    rag_image_sources = []
+    _apply_image_source_policy(llm_messages, image_mode)
+
     # RAG: inject relevant pool document context
     rag_sources = []
     try:
@@ -1355,10 +1459,26 @@ async def send_pool_message(
                     {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
                     for c in chunks
                 ]
-                if llm_messages and llm_messages[0]["role"] == "system":
-                    llm_messages[0]["content"] += "\n\n" + rag_context
-                else:
-                    llm_messages.insert(0, {"role": "system", "content": rag_context})
+                _inject_system_context(llm_messages, rag_context)
+
+            if rag_mod.should_use_image_retrieval(payload.content, image_mode):
+                assets = await rag_mod.search_similar_assets(
+                    query=payload.content,
+                    user_id=current_user["id"],
+                    pool_id=pool_id,
+                )
+                rag_image_sources = [
+                    {
+                        "asset_id": a.get("asset_id"),
+                        "document_id": a.get("document_id"),
+                        "filename": a.get("filename"),
+                        "page_number": a.get("page_number"),
+                        "caption": a.get("caption"),
+                        "url": a.get("storage_path"),
+                        "similarity": round(a.get("similarity", 0), 3),
+                    }
+                    for a in assets
+                ]
     except Exception as e:
         logger.warning(f"Pool RAG injection failed: {e}")
 
@@ -1366,7 +1486,7 @@ async def send_pool_message(
         return StreamingResponse(
             _stream_pool_response(
                 pool_id, chat_id, llm_messages, model, temperature,
-                current_user["id"], rag_sources=rag_sources,
+                current_user["id"], rag_sources=rag_sources, rag_image_sources=rag_image_sources,
             ),
             media_type="text/event-stream",
             headers={
@@ -1402,6 +1522,8 @@ async def send_pool_message(
         raise HTTPException(status_code=500, detail="Failed to load updated chat")
     if rag_sources:
         updated_chat["rag_sources"] = rag_sources
+    if rag_image_sources:
+        updated_chat["rag_image_sources"] = rag_image_sources
     return updated_chat
 
 
@@ -1413,6 +1535,7 @@ async def _stream_pool_response(
     temperature: float,
     user_id: str,
     rag_sources: Optional[List[Dict]] = None,
+    rag_image_sources: Optional[List[Dict]] = None,
 ):
     full_content = ""
     usage = {}
@@ -1440,6 +1563,8 @@ async def _stream_pool_response(
         done_data = {'done': True, 'content': full_content}
         if rag_sources:
             done_data['sources'] = rag_sources
+        if rag_image_sources:
+            done_data['image_sources'] = rag_image_sources
         yield f"data: {json.dumps(done_data)}\n\n"
 
     except LLMError as e:

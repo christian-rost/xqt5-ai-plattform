@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 class CreateConversationRequest(BaseModel):
@@ -14,6 +14,7 @@ class SendMessageRequest(BaseModel):
     model: Optional[str] = None
     temperature: Optional[float] = None
     stream: bool = False
+    image_mode: Literal["auto", "on", "off"] = "auto"
 
 
 class UpdateConversationRequest(BaseModel):
@@ -180,3 +181,4 @@ class SendPoolMessageRequest(BaseModel):
     model: Optional[str] = None
     temperature: Optional[float] = None
     stream: bool = False
+    image_mode: Literal["auto", "on", "off"] = "auto"

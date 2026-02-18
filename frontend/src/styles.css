@@ -1687,6 +1687,41 @@ body {
   border: 1px solid #bee5eb;
 }
 
+.rag-image-sources {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.rag-image-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.rag-image-item {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.rag-image-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.rag-image-item figcaption {
+  font-size: 11px;
+  color: var(--color-gray);
+  line-height: 1.4;
+}
+
 /* ── Pool List (Sidebar) ── */
 
 .pool-list-section {

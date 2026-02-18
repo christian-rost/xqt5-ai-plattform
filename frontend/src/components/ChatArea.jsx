@@ -8,6 +8,7 @@ export default function ChatArea({
   models,
   selectedModel,
   temperature,
+  imageMode,
   loading,
   streamingContent,
   error,
@@ -16,6 +17,7 @@ export default function ChatArea({
   onSend,
   onModelChange,
   onTemperatureChange,
+  onImageModeChange,
   onUpload,
   onDeleteDocument,
 }) {
@@ -46,6 +48,7 @@ export default function ChatArea({
             content={m.content || ''}
             model={m.model}
             sources={m.sources}
+            imageSources={m.image_sources}
           />
         ))}
 
@@ -60,18 +63,20 @@ export default function ChatArea({
         <div ref={messagesEndRef} />
       </section>
 
-      <MessageInput
+        <MessageInput
         models={models}
         selectedModel={selectedModel}
-        temperature={temperature}
-        loading={loading}
+          temperature={temperature}
+          imageMode={imageMode}
+          loading={loading}
         templates={templates}
         chatId={conversation?.id}
         documents={documents}
         onSend={onSend}
-        onModelChange={onModelChange}
-        onTemperatureChange={onTemperatureChange}
-        onUpload={onUpload}
+          onModelChange={onModelChange}
+          onTemperatureChange={onTemperatureChange}
+          onImageModeChange={onImageModeChange}
+          onUpload={onUpload}
         onDeleteDocument={onDeleteDocument}
       />
     </main>

@@ -23,6 +23,7 @@ export default function PoolDetail({
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState(null)
   const [chatModel, setChatModel] = useState(selectedModel)
+  const [chatImageMode, setChatImageMode] = useState('auto')
   const [error, setError] = useState('')
 
   const role = pool.role || 'viewer'
@@ -136,17 +137,23 @@ export default function PoolDetail({
         content,
         chatModel,
         null,
+        chatImageMode,
         (delta) => {
           setStreamingContent((prev) => (prev || '') + delta)
         },
-        async (fullContent, sources) => {
+        async (fullContent, sources, imageSources) => {
           setStreamingContent(null)
           setLoading(false)
           const updated = await api.getPoolChat(pool.id, activeChat.id)
-          if (sources && sources.length > 0 && updated.messages) {
+          if (updated.messages) {
             const lastMsg = updated.messages[updated.messages.length - 1]
             if (lastMsg && lastMsg.role === 'assistant') {
-              lastMsg.sources = sources
+              if (sources && sources.length > 0) {
+                lastMsg.sources = sources
+              }
+              if (imageSources && imageSources.length > 0) {
+                lastMsg.image_sources = imageSources
+              }
             }
           }
           setActiveChat(updated)
@@ -262,10 +269,12 @@ export default function PoolDetail({
             chat={activeChat}
             models={models}
             selectedModel={chatModel}
+            imageMode={chatImageMode}
             loading={loading}
             streamingContent={streamingContent}
             onSend={handleSendMessage}
             onModelChange={setChatModel}
+            onImageModeChange={setChatImageMode}
             onBack={() => setActiveChat(null)}
           />
         )}

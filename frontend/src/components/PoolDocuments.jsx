@@ -25,7 +25,7 @@ export default function PoolDocuments({ documents, canEdit, onUpload, onDelete }
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.txt"
+            accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
@@ -36,7 +36,7 @@ export default function PoolDocuments({ documents, canEdit, onUpload, onDelete }
           >
             {uploading ? 'Lade hoch...' : 'Dokument hochladen'}
           </button>
-          <span className="pool-upload-hint">PDF oder TXT</span>
+          <span className="pool-upload-hint">PDF, TXT oder Bild</span>
         </div>
       )}
 
@@ -50,7 +50,7 @@ export default function PoolDocuments({ documents, canEdit, onUpload, onDelete }
           {documents.map((doc) => (
             <div key={doc.id} className={`pool-doc-item doc-status-${doc.status}`}>
               <span className="pool-doc-icon">
-                {doc.file_type === 'pdf' ? '\u{1F4C4}' : '\u{1F4DD}'}
+                {doc.file_type === 'pdf' ? '\u{1F4C4}' : (doc.file_type === 'image' ? '\u{1F5BC}\u{FE0F}' : '\u{1F4DD}')}
               </span>
               <div className="pool-doc-info">
                 <span className="pool-doc-name">{doc.filename}</span>

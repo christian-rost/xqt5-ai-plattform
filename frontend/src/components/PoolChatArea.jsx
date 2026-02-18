@@ -5,10 +5,12 @@ export default function PoolChatArea({
   chat,
   models,
   selectedModel,
+  imageMode,
   loading,
   streamingContent,
   onSend,
   onModelChange,
+  onImageModeChange,
   onBack,
 }) {
   const messagesEndRef = useRef(null)
@@ -52,6 +54,15 @@ export default function PoolChatArea({
             </option>
           ))}
         </select>
+        <select
+          className="model-select"
+          value={imageMode || 'auto'}
+          onChange={(e) => onImageModeChange?.(e.target.value)}
+        >
+          <option value="auto">Bildquellen: Auto</option>
+          <option value="on">Bildquellen: Ein</option>
+          <option value="off">Bildquellen: Aus</option>
+        </select>
       </div>
 
       <section className="messages pool-messages">
@@ -62,6 +73,7 @@ export default function PoolChatArea({
             content={m.content || ''}
             model={m.model}
             sources={m.sources}
+            imageSources={m.image_sources}
             username={m.username}
           />
         ))}
