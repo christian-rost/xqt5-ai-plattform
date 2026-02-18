@@ -538,8 +538,13 @@ async def send_message(
     # RAG: inject relevant document context
     rag_sources = []
     has_doc_context = False
+
+    # Detect intent first (never fails); initialize chunks before vector search
+    query_intent = rag_mod.detect_query_intent(payload.content)
+    chunks = []
+
+    # Step 1: Vector search — best-effort, failures must not block text fallback
     try:
-        query_intent = rag_mod.detect_query_intent(payload.content)
         rag_settings = admin_crud.get_rag_settings()
         chunks = await rag_mod.retrieve_chunks_with_strategy(
             query=payload.content,
@@ -548,6 +553,11 @@ async def send_message(
             intent=query_intent,
             rerank_settings=rag_settings,
         )
+    except Exception as e:
+        logger.warning("RAG vector search failed: %s", e, exc_info=True)
+
+    # Step 2: Inject context — always runs regardless of vector search outcome
+    try:
         if chunks:
             rag_context = rag_mod.build_rag_context(chunks)
             rag_sources = [
@@ -573,13 +583,17 @@ async def send_message(
             should_try_images = True
 
         if should_try_images:
-            assets = await rag_mod.search_similar_assets(
-                query=payload.content,
-                user_id=current_user["id"],
-                chat_id=conversation_id,
-                top_k=8 if query_intent == "summary" else 5,
-                threshold=0.0 if query_intent == "summary" else rag_mod.RAG_SIMILARITY_THRESHOLD,
-            )
+            try:
+                assets = await rag_mod.search_similar_assets(
+                    query=payload.content,
+                    user_id=current_user["id"],
+                    chat_id=conversation_id,
+                    top_k=8 if query_intent == "summary" else 5,
+                    threshold=0.0 if query_intent == "summary" else rag_mod.RAG_SIMILARITY_THRESHOLD,
+                )
+            except Exception as e:
+                logger.warning("Image asset search failed: %s", e, exc_info=True)
+                assets = []
             image_context = rag_mod.build_image_rag_context(assets)
             _inject_system_context(llm_messages, image_context)
             if image_context:
@@ -1678,8 +1692,13 @@ async def send_pool_message(
     # RAG: inject relevant pool document context
     rag_sources = []
     has_doc_context = False
+
+    # Detect intent first (never fails); initialize chunks before vector search
+    query_intent = rag_mod.detect_query_intent(payload.content)
+    chunks = []
+
+    # Step 1: Vector search — best-effort, failures must not block text fallback
     try:
-        query_intent = rag_mod.detect_query_intent(payload.content)
         rag_settings = admin_crud.get_rag_settings()
         chunks = await rag_mod.retrieve_chunks_with_strategy(
             query=payload.content,
@@ -1688,6 +1707,11 @@ async def send_pool_message(
             intent=query_intent,
             rerank_settings=rag_settings,
         )
+    except Exception as e:
+        logger.warning("Pool RAG vector search failed: %s", e, exc_info=True)
+
+    # Step 2: Inject context — always runs regardless of vector search outcome
+    try:
         if chunks:
             rag_context = rag_mod.build_rag_context(chunks)
             rag_sources = [
@@ -1708,13 +1732,17 @@ async def send_pool_message(
             should_try_images = True
 
         if should_try_images:
-            assets = await rag_mod.search_similar_assets(
-                query=payload.content,
-                user_id=current_user["id"],
-                pool_id=pool_id,
-                top_k=8 if query_intent == "summary" else 5,
-                threshold=0.0 if query_intent == "summary" else rag_mod.RAG_SIMILARITY_THRESHOLD,
-            )
+            try:
+                assets = await rag_mod.search_similar_assets(
+                    query=payload.content,
+                    user_id=current_user["id"],
+                    pool_id=pool_id,
+                    top_k=8 if query_intent == "summary" else 5,
+                    threshold=0.0 if query_intent == "summary" else rag_mod.RAG_SIMILARITY_THRESHOLD,
+                )
+            except Exception as e:
+                logger.warning("Pool image asset search failed: %s", e, exc_info=True)
+                assets = []
             image_context = rag_mod.build_image_rag_context(assets)
             _inject_system_context(llm_messages, image_context)
             if image_context:
