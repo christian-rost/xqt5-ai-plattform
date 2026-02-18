@@ -237,6 +237,7 @@ def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
         for p in sorted(updated_pages, key=lambda x: x.get("index", 0))
         if str(p.get("markdown", "")).strip()
     ).strip()
+    extracted = _normalize_markdown_text(extracted)
 
     # Optional extra structured block from document-level annotation
     doc_anno = data.get("document_annotation")
@@ -245,6 +246,48 @@ def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
         extracted = f"{extracted}\n\n{doc_anno_text}".strip()
 
     return extracted
+
+
+def _normalize_markdown_text(text: str) -> str:
+    """Light markdown-aware normalization for cleaner retrieval chunks."""
+    if not text:
+        return ""
+
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Fix OCR soft-hyphen line wraps: "Fachbe-\nreiche" -> "Fachbereiche"
+    t = re.sub(r"([A-Za-zÄÖÜäöüß])-\n([A-Za-zÄÖÜäöüß])", r"\1\2", t)
+
+    lines = [ln.rstrip() for ln in t.split("\n")]
+    out: List[str] = []
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            out.append("")
+            continue
+
+        # Drop common page boilerplate lines
+        if re.match(r"^Seite\s+\d+\s*/\s*\d+$", s, flags=re.IGNORECASE):
+            continue
+        if re.match(r"^(Vorlagen-Version|Organisationseinheit|Bearbeiter)\s*:", s, flags=re.IGNORECASE):
+            continue
+        if re.match(r"^\d{2}\.\d{2}\.\d{4}\s+Version\s+\d+", s, flags=re.IGNORECASE):
+            continue
+
+        # Normalize bullets
+        if s.startswith("• "):
+            s = "- " + s[2:].strip()
+
+        # Turn numbered section titles into markdown headings
+        if re.match(r"^\d+(\.\d+)+\s+\S+", s):
+            s = "### " + s
+
+        out.append(s)
+
+    # Compact excessive blank lines
+    normalized = "\n".join(out)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
+    return normalized
 
 
 def _apply_summaries_to_pages(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
