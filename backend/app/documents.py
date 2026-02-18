@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import logging
 import json
 import re
@@ -97,39 +98,24 @@ async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -
 
     b64 = base64.b64encode(file_bytes).decode("ascii")
     image_url = f"data:{mime_type};base64,{b64}"
-    payload = _build_mistral_payload_image(image_url)
-
     logger.info("OCR via Mistral (image) for %s (%d bytes)", filename, len(file_bytes))
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        resp = await client.post(
-            "https://api.mistral.ai/v1/ocr",
-            headers=headers,
-            json=payload,
-        )
-        # Some API versions expect image_url as object: {"url": "..."}
-        if resp.status_code == 422:
-            payload_obj = _build_mistral_payload_image(image_url, as_object=True)
-            resp = await client.post(
-                "https://api.mistral.ai/v1/ocr",
-                headers=headers,
-                json=payload_obj,
-            )
-
-    if resp.status_code != 200:
-        detail = resp.text[:600]
-        logger.error("Mistral image OCR failed (%d): %s", resp.status_code, detail)
-        raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {resp.status_code}): {detail}")
-
-    data = resp.json()
+    payload_variants = [
+        _build_mistral_payload_image(image_url, as_object=False, include_structured=True, include_image_base64=True),
+        _build_mistral_payload_image(image_url, as_object=True, include_structured=True, include_image_base64=True),
+        _build_mistral_payload_image(image_url, as_object=True, include_structured=False, include_image_base64=True),
+        _build_mistral_payload_image(image_url, as_object=True, include_structured=False, include_image_base64=False),
+    ]
+    data = await _mistral_ocr_with_fallbacks(api_key, payload_variants, filename, mode="image")
     return _extract_text_from_mistral_response(data)
 
 
-def _build_mistral_payload_document(document_url: str, include_type: bool = True) -> Dict[str, Any]:
+def _build_mistral_payload_document(
+    document_url: str,
+    include_type: bool = True,
+    include_structured: bool = True,
+    include_image_base64: bool = True,
+) -> Dict[str, Any]:
     document: Dict[str, Any] = {"document_url": document_url}
     if include_type:
         document["type"] = "document_url"
@@ -138,14 +124,19 @@ def _build_mistral_payload_document(document_url: str, include_type: bool = True
         "model": "mistral-ocr-latest",
         "document": document,
     }
-    if MISTRAL_OCR_STRUCTURED:
+    if include_structured and MISTRAL_OCR_STRUCTURED:
         payload.update(_mistral_annotation_formats())
-    # Force image payloads for reliable OCR image asset extraction from PDFs.
-    payload["include_image_base64"] = True
+    if include_image_base64:
+        payload["include_image_base64"] = True
     return payload
 
 
-def _build_mistral_payload_image(image_url: str, as_object: bool = False) -> Dict[str, Any]:
+def _build_mistral_payload_image(
+    image_url: str,
+    as_object: bool = False,
+    include_structured: bool = True,
+    include_image_base64: bool = True,
+) -> Dict[str, Any]:
     image_value: Any = {"url": image_url} if as_object else image_url
     payload: Dict[str, Any] = {
         "model": "mistral-ocr-latest",
@@ -154,9 +145,10 @@ def _build_mistral_payload_image(image_url: str, as_object: bool = False) -> Dic
             "image_url": image_value,
         },
     }
-    if MISTRAL_OCR_STRUCTURED:
+    if include_structured and MISTRAL_OCR_STRUCTURED:
         payload.update(_mistral_annotation_formats())
-    payload["include_image_base64"] = True
+    if include_image_base64:
+        payload["include_image_base64"] = True
     return payload
 
 
@@ -759,41 +751,97 @@ async def _mistral_ocr_document_with_assets(
     filename: str,
     byte_length: int,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    payload = _build_mistral_payload_document(document_url)
-
     logger.info("OCR via Mistral for %s (%d bytes)", filename, byte_length)
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            "https://api.mistral.ai/v1/ocr",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-
-    if resp.status_code == 422:
-        payload_fallback = _build_mistral_payload_document(document_url, include_type=False)
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                "https://api.mistral.ai/v1/ocr",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload_fallback,
-            )
-
-    if resp.status_code != 200:
-        detail = resp.text[:300]
-        logger.error("Mistral OCR failed (%d): %s", resp.status_code, detail)
-        raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {resp.status_code})")
-
-    data = resp.json()
+    payload_variants = [
+        _build_mistral_payload_document(
+            document_url,
+            include_type=True,
+            include_structured=True,
+            include_image_base64=True,
+        ),
+        _build_mistral_payload_document(
+            document_url,
+            include_type=False,
+            include_structured=True,
+            include_image_base64=True,
+        ),
+        _build_mistral_payload_document(
+            document_url,
+            include_type=False,
+            include_structured=False,
+            include_image_base64=True,
+        ),
+        _build_mistral_payload_document(
+            document_url,
+            include_type=False,
+            include_structured=False,
+            include_image_base64=False,
+        ),
+    ]
+    data = await _mistral_ocr_with_fallbacks(api_key, payload_variants, filename, mode="document")
     return _extract_text_and_assets_from_mistral_response(data)
 
 
 async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, byte_length: int) -> str:
     text, _ = await _mistral_ocr_document_with_assets(api_key, document_url, filename, byte_length)
     return text
+
+
+async def _mistral_ocr_with_fallbacks(
+    api_key: str,
+    payload_variants: List[Dict[str, Any]],
+    filename: str,
+    mode: str,
+) -> Dict[str, Any]:
+    last_status: Optional[int] = None
+    last_detail = ""
+    for variant_idx, payload in enumerate(payload_variants, start=1):
+        resp = await _post_mistral_ocr_with_retries(api_key, payload)
+        if resp.status_code == 200:
+            if variant_idx > 1:
+                logger.warning("Mistral OCR succeeded with fallback variant %d for %s", variant_idx, filename)
+            return resp.json()
+
+        last_status = resp.status_code
+        last_detail = (resp.text or "")[:600]
+        logger.warning(
+            "Mistral OCR %s variant %d failed for %s: HTTP %s %s",
+            mode,
+            variant_idx,
+            filename,
+            resp.status_code,
+            last_detail[:180],
+        )
+        if resp.status_code < 500 and resp.status_code != 422:
+            break
+
+    logger.error("Mistral OCR %s failed for %s (%s): %s", mode, filename, last_status, last_detail)
+    if last_status:
+        raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {last_status}): {last_detail}")
+    raise ValueError("Mistral OCR fehlgeschlagen")
+
+
+async def _post_mistral_ocr_with_retries(api_key: str, payload: Dict[str, Any], retries: int = 3) -> httpx.Response:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    transient_statuses = {429, 500, 502, 503, 504}
+    last_error: Optional[Exception] = None
+
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post("https://api.mistral.ai/v1/ocr", headers=headers, json=payload)
+            if resp.status_code not in transient_statuses or attempt == retries - 1:
+                return resp
+        except Exception as e:
+            last_error = e
+            if attempt == retries - 1:
+                break
+
+        await asyncio.sleep(1.0 * (2 ** attempt))
+
+    if last_error:
+        raise ValueError(f"Mistral OCR request fehlgeschlagen: {last_error}")
+    raise ValueError("Mistral OCR request fehlgeschlagen")
