@@ -1,10 +1,13 @@
 import base64
 import io
 import logging
+import json
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
 
+from .config import MISTRAL_OCR_INCLUDE_IMAGE_BASE64, MISTRAL_OCR_STRUCTURED
 from .database import supabase
 
 logger = logging.getLogger(__name__)
@@ -88,13 +91,7 @@ async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -
 
     b64 = base64.b64encode(file_bytes).decode("ascii")
     image_url = f"data:{mime_type};base64,{b64}"
-    payload = {
-        "model": "mistral-ocr-latest",
-        "document": {
-            "type": "image_url",
-            "image_url": image_url,
-        },
-    }
+    payload = _build_mistral_payload_image(image_url)
 
     logger.info("OCR via Mistral (image) for %s (%d bytes)", filename, len(file_bytes))
 
@@ -110,13 +107,7 @@ async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -
         )
         # Some API versions expect image_url as object: {"url": "..."}
         if resp.status_code == 422:
-            payload_obj = {
-                "model": "mistral-ocr-latest",
-                "document": {
-                    "type": "image_url",
-                    "image_url": {"url": image_url},
-                },
-            }
+            payload_obj = _build_mistral_payload_image(image_url, as_object=True)
             resp = await client.post(
                 "https://api.mistral.ai/v1/ocr",
                 headers=headers,
@@ -129,19 +120,11 @@ async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -
         raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {resp.status_code}): {detail}")
 
     data = resp.json()
-    pages = data.get("pages", [])
-    texts = [p.get("markdown", "") for p in pages if p.get("markdown")]
-    return "\n\n".join(texts)
+    return _extract_text_from_mistral_response(data)
 
 
 async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, byte_length: int) -> str:
-    payload = {
-        "model": "mistral-ocr-latest",
-        "document": {
-            "type": "document_url",
-            "document_url": document_url,
-        },
-    }
+    payload = _build_mistral_payload_document(document_url)
 
     logger.info("OCR via Mistral for %s (%d bytes)", filename, byte_length)
 
@@ -155,15 +138,212 @@ async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, 
             json=payload,
         )
 
+    if resp.status_code == 422:
+        # Some API versions accept document object without explicit `type`
+        payload_fallback = _build_mistral_payload_document(document_url, include_type=False)
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://api.mistral.ai/v1/ocr",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload_fallback,
+            )
+
     if resp.status_code != 200:
         detail = resp.text[:300]
         logger.error("Mistral OCR failed (%d): %s", resp.status_code, detail)
         raise ValueError(f"Mistral OCR fehlgeschlagen (HTTP {resp.status_code})")
 
     data = resp.json()
-    pages = data.get("pages", [])
-    texts = [p.get("markdown", "") for p in pages if p.get("markdown")]
-    return "\n\n".join(texts)
+    return _extract_text_from_mistral_response(data)
+
+
+def _build_mistral_payload_document(document_url: str, include_type: bool = True) -> Dict[str, Any]:
+    document: Dict[str, Any] = {"document_url": document_url}
+    if include_type:
+        document["type"] = "document_url"
+
+    payload: Dict[str, Any] = {
+        "model": "mistral-ocr-latest",
+        "document": document,
+    }
+    if MISTRAL_OCR_STRUCTURED:
+        payload.update(_mistral_annotation_formats())
+        payload["include_image_base64"] = MISTRAL_OCR_INCLUDE_IMAGE_BASE64
+    return payload
+
+
+def _build_mistral_payload_image(image_url: str, as_object: bool = False) -> Dict[str, Any]:
+    image_value: Any = {"url": image_url} if as_object else image_url
+    payload: Dict[str, Any] = {
+        "model": "mistral-ocr-latest",
+        "document": {
+            "type": "image_url",
+            "image_url": image_value,
+        },
+    }
+    if MISTRAL_OCR_STRUCTURED:
+        payload.update(_mistral_annotation_formats())
+        payload["include_image_base64"] = MISTRAL_OCR_INCLUDE_IMAGE_BASE64
+    return payload
+
+
+def _mistral_annotation_formats() -> Dict[str, Any]:
+    return {
+        "bbox_annotation_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "bbox_annotation",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "title": "BBOXAnnotation",
+                    "additionalProperties": False,
+                    "required": ["document_type", "short_description", "summary"],
+                    "properties": {
+                        "document_type": {
+                            "type": "string",
+                            "title": "Document_Type",
+                            "description": "The type of the image.",
+                        },
+                        "short_description": {
+                            "type": "string",
+                            "title": "Short_Description",
+                            "description": "A description in German describing the image.",
+                        },
+                        "summary": {
+                            "type": "string",
+                            "title": "Summary",
+                            "description": "Summarize the image in German.",
+                        },
+                    },
+                },
+            },
+        },
+        "document_annotation_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "document_annotation",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "title": "DocumentAnnotation",
+                    "additionalProperties": False,
+                    "required": ["language", "chapter_titles", "urls"],
+                    "properties": {
+                        "language": {"type": "string", "title": "Language"},
+                        "chapter_titles": {"type": "string", "title": "Chapter_Titles"},
+                        "urls": {"type": "string", "title": "urls"},
+                    },
+                },
+            },
+        },
+    }
+
+
+def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
+    pages = data.get("pages", []) or []
+    updated_pages = _apply_summaries_to_pages(pages)
+    extracted = "\n\n".join(
+        str(p.get("markdown", "")).strip()
+        for p in sorted(updated_pages, key=lambda x: x.get("index", 0))
+        if str(p.get("markdown", "")).strip()
+    ).strip()
+
+    # Optional extra structured block from document-level annotation
+    doc_anno = data.get("document_annotation")
+    doc_anno_text = _document_annotation_to_text(doc_anno)
+    if doc_anno_text:
+        extracted = f"{extracted}\n\n{doc_anno_text}".strip()
+
+    return extracted
+
+
+def _apply_summaries_to_pages(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    updated: List[Dict[str, Any]] = []
+    image_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+    for page in pages:
+        markdown = str(page.get("markdown", ""))
+        images = page.get("images", []) or []
+        summary_by_id: Dict[str, str] = {}
+
+        for img in images:
+            img_id = img.get("id")
+            if not img_id:
+                continue
+            summary = _clean_for_paren(_get_summary(img.get("image_annotation")))
+            if summary:
+                summary_by_id[str(img_id).strip()] = summary
+
+        def repl(match: re.Match[str]) -> str:
+            original = match.group(0)
+            link_target = match.group(2).strip()
+            summary = summary_by_id.get(link_target)
+            if not summary:
+                return original
+            return f"{original} ({summary})"
+
+        updated_markdown = image_pattern.sub(repl, markdown)
+        updated.append({**page, "markdown": updated_markdown})
+
+    return updated
+
+
+def _get_summary(image_annotation: Any) -> str:
+    if not image_annotation:
+        return ""
+    if isinstance(image_annotation, str):
+        try:
+            parsed = json.loads(image_annotation)
+            return str(parsed.get("summary", "")).strip()
+        except Exception:
+            return ""
+    if isinstance(image_annotation, dict):
+        return str(image_annotation.get("summary", "")).strip()
+    return ""
+
+
+def _clean_for_paren(text: str) -> str:
+    return (
+        str(text or "")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .strip()
+    )
+
+
+def _document_annotation_to_text(annotation: Any) -> str:
+    if not annotation:
+        return ""
+    obj: Dict[str, Any]
+    if isinstance(annotation, str):
+        try:
+            obj = json.loads(annotation)
+        except Exception:
+            return ""
+    elif isinstance(annotation, dict):
+        obj = annotation
+    else:
+        return ""
+
+    language = str(obj.get("language", "")).strip()
+    chapters = str(obj.get("chapter_titles", "")).strip()
+    urls = str(obj.get("urls", "")).strip()
+    fields = []
+    if language:
+        fields.append(f"language: {language}")
+    if chapters:
+        fields.append(f"chapter_titles: {chapters}")
+    if urls:
+        fields.append(f"urls: {urls}")
+    if not fields:
+        return ""
+    return "[Document annotation]\n" + "\n".join(f"- {f}" for f in fields)
 
 
 def create_document(
@@ -251,6 +431,42 @@ def has_ready_documents(user_id: str, chat_id: Optional[str] = None) -> bool:
 
     result = query.limit(1).execute()
     return bool(result.data)
+
+
+def list_ready_document_texts(
+    user_id: str,
+    chat_id: Optional[str] = None,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """Return ready document texts for fallback grounding."""
+    query = supabase.table("app_documents").select(
+        "id,filename,extracted_text,chat_id,created_at"
+    ).eq("user_id", user_id).eq("status", "ready").is_("pool_id", "null")
+
+    if chat_id:
+        query = query.or_(f"chat_id.eq.{chat_id},chat_id.is.null")
+    else:
+        query = query.is_("chat_id", "null")
+
+    result = query.order("created_at", desc=True).limit(limit).execute()
+    return result.data or []
+
+
+def list_ready_pool_document_texts(
+    pool_id: str,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """Return ready pool document texts for fallback grounding."""
+    result = (
+        supabase.table("app_documents")
+        .select("id,filename,extracted_text,created_at")
+        .eq("pool_id", pool_id)
+        .eq("status", "ready")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
 
 
 def create_document_asset(

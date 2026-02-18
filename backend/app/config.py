@@ -35,6 +35,8 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 RAG_SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
+MISTRAL_OCR_STRUCTURED = os.getenv("MISTRAL_OCR_STRUCTURED", "true").lower() in {"1", "true", "yes", "on"}
+MISTRAL_OCR_INCLUDE_IMAGE_BASE64 = os.getenv("MISTRAL_OCR_INCLUDE_IMAGE_BASE64", "false").lower() in {"1", "true", "yes", "on"}
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL and SUPABASE_KEY are required")
