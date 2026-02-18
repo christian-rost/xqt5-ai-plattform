@@ -598,12 +598,12 @@ async def send_message(
             ]
 
         if not has_doc_context:
-            chat_rows = documents_mod.list_ready_chat_document_texts(
+            chat_rows = documents_mod.list_chat_document_texts(
                 user_id=current_user["id"],
                 chat_id=conversation_id,
                 limit=3,
             )
-            global_rows = documents_mod.list_ready_global_document_texts(
+            global_rows = documents_mod.list_global_document_texts(
                 user_id=current_user["id"],
                 limit=2,
             )
