@@ -544,6 +544,9 @@ def create_document(
     extracted_text: str,
     pool_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    if chat_id and pool_id:
+        raise ValueError("Document cannot belong to both chat and pool scope")
+
     row = {
         "user_id": user_id,
         "filename": filename,
@@ -580,7 +583,7 @@ def list_documents(
     """List documents. scope: 'chat' (only chat_id), 'global' (chat_id IS NULL), 'all' (both)."""
     query = supabase.table("app_documents").select(
         "id,filename,file_type,file_size_bytes,chunk_count,status,error_message,chat_id,created_at"
-    ).eq("user_id", user_id)
+    ).eq("user_id", user_id).is_("pool_id", "null")
 
     if scope == "chat" and chat_id:
         query = query.eq("chat_id", chat_id)
@@ -596,14 +599,14 @@ def list_documents(
 def get_document(document_id: str, user_id: str) -> Optional[Dict[str, Any]]:
     result = supabase.table("app_documents").select("*").eq(
         "id", document_id
-    ).eq("user_id", user_id).execute()
+    ).eq("user_id", user_id).is_("pool_id", "null").execute()
     return result.data[0] if result.data else None
 
 
 def delete_document(document_id: str, user_id: str) -> bool:
     result = supabase.table("app_documents").delete().eq(
         "id", document_id
-    ).eq("user_id", user_id).execute()
+    ).eq("user_id", user_id).is_("pool_id", "null").execute()
     return bool(result.data)
 
 
@@ -611,7 +614,7 @@ def has_ready_documents(user_id: str, chat_id: Optional[str] = None) -> bool:
     """Quick check if user has any ready documents (chat-specific or global)."""
     query = supabase.table("app_documents").select("id", count="exact").eq(
         "user_id", user_id
-    ).eq("status", "ready")
+    ).eq("status", "ready").is_("pool_id", "null")
 
     if chat_id:
         query = query.or_(f"chat_id.eq.{chat_id},chat_id.is.null")
