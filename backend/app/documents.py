@@ -221,7 +221,7 @@ def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
 def _extract_text_and_assets_from_mistral_response(data: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]]]:
     pages = data.get("pages", []) or []
     updated_pages = _apply_summaries_to_pages(pages)
-    extracted = _build_extracted_markdown(updated_pages)
+    extracted = _build_extracted_markdown(updated_pages, data)
     if not extracted:
         logger.warning("Mistral OCR produced empty markdown/text. keys=%s", sorted(list(data.keys())))
 
@@ -235,18 +235,23 @@ def _extract_text_and_assets_from_mistral_response(data: Dict[str, Any]) -> Tupl
     return extracted, assets
 
 
-def _build_extracted_markdown(pages: List[Dict[str, Any]]) -> str:
+def _build_extracted_markdown(pages: List[Dict[str, Any]], response_data: Optional[Dict[str, Any]] = None) -> str:
     sorted_pages = sorted(pages, key=lambda p: _safe_int(p.get("index")) or 0)
     page_blocks: List[str] = []
 
     for page in sorted_pages:
-        markdown = _page_markdown_with_image_refs(page)
+        markdown = _page_markdown_with_image_refs(page, _extract_page_markdown(page))
         if markdown:
             page_blocks.append(markdown)
 
     if page_blocks:
         # Keep OCR markdown structure as-is for better retrieval quality.
         return "\n\n".join(page_blocks).strip()
+
+    # Fallback: some OCR variants return markdown/text at top-level.
+    top_level_text = _extract_top_level_markdown(response_data or {})
+    if top_level_text:
+        return top_level_text
 
     # Fallback only if API returned no markdown.
     fallback_text = "\n\n".join(
@@ -272,8 +277,25 @@ def _build_extracted_markdown(pages: List[Dict[str, Any]]) -> str:
     return fallback_text
 
 
-def _page_markdown_with_image_refs(page: Dict[str, Any]) -> str:
-    markdown = str(page.get("markdown", "")).strip()
+def _extract_page_markdown(page: Dict[str, Any]) -> str:
+    # Handle possible response variants across OCR API revisions.
+    for key in ("markdown", "md", "content_markdown", "text_markdown", "content"):
+        value = page.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _extract_top_level_markdown(data: Dict[str, Any]) -> str:
+    for key in ("markdown", "content_markdown", "text_markdown", "text"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _page_markdown_with_image_refs(page: Dict[str, Any], markdown: str) -> str:
+    markdown = str(markdown or "").strip()
     images = page.get("images", []) or []
     if not images:
         return markdown
