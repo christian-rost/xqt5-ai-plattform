@@ -222,12 +222,7 @@ def _extract_text_from_mistral_response(data: Dict[str, Any]) -> str:
 def _extract_text_and_assets_from_mistral_response(data: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]]]:
     pages = data.get("pages", []) or []
     updated_pages = _apply_summaries_to_pages(pages)
-    extracted = "\n\n".join(
-        str(p.get("markdown", "")).strip()
-        for p in sorted(updated_pages, key=lambda x: x.get("index", 0))
-        if str(p.get("markdown", "")).strip()
-    ).strip()
-    extracted = _normalize_markdown_text(extracted)
+    extracted = _build_extracted_markdown(updated_pages)
 
     # Optional extra structured block from document-level annotation
     doc_anno = data.get("document_annotation")
@@ -237,6 +232,49 @@ def _extract_text_and_assets_from_mistral_response(data: Dict[str, Any]) -> Tupl
 
     assets = _extract_image_assets_from_pages(updated_pages)
     return extracted, assets
+
+
+def _build_extracted_markdown(pages: List[Dict[str, Any]]) -> str:
+    sorted_pages = sorted(pages, key=lambda p: _safe_int(p.get("index")) or 0)
+    page_blocks: List[str] = []
+
+    for page in sorted_pages:
+        markdown = _page_markdown_with_image_refs(page)
+        if markdown:
+            page_blocks.append(markdown)
+
+    if page_blocks:
+        # Keep OCR markdown structure as-is for better retrieval quality.
+        return "\n\n".join(page_blocks).strip()
+
+    # Fallback only if API returned no markdown.
+    fallback_text = "\n\n".join(
+        str(p.get("text", "")).strip()
+        for p in sorted_pages
+        if str(p.get("text", "")).strip()
+    ).strip()
+    return _normalize_markdown_text(fallback_text)
+
+
+def _page_markdown_with_image_refs(page: Dict[str, Any]) -> str:
+    markdown = str(page.get("markdown", "")).strip()
+    images = page.get("images", []) or []
+    if not images:
+        return markdown
+
+    refs_to_add: List[str] = []
+    existing_ids = set(re.findall(r"!\[[^\]]*\]\(([^)]+)\)", markdown))
+    for idx, img in enumerate(images):
+        img_id = str(img.get("id", "")).strip()
+        if not img_id or img_id in existing_ids:
+            continue
+        refs_to_add.append(f"![img-{idx}]({img_id})")
+
+    if not refs_to_add:
+        return markdown
+    if markdown:
+        return f"{markdown}\n\n" + "\n".join(refs_to_add)
+    return "\n".join(refs_to_add)
 
 
 def _normalize_markdown_text(text: str) -> str:
