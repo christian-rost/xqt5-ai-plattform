@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 
-from .config import MISTRAL_OCR_INCLUDE_IMAGE_BASE64, MISTRAL_OCR_STRUCTURED
+from .config import MISTRAL_OCR_STRUCTURED
 from .database import supabase
 
 logger = logging.getLogger(__name__)
@@ -140,8 +140,8 @@ def _build_mistral_payload_document(document_url: str, include_type: bool = True
     }
     if MISTRAL_OCR_STRUCTURED:
         payload.update(_mistral_annotation_formats())
-    if MISTRAL_OCR_INCLUDE_IMAGE_BASE64:
-        payload["include_image_base64"] = True
+    # Force image payloads for reliable OCR image asset extraction from PDFs.
+    payload["include_image_base64"] = True
     return payload
 
 
@@ -156,8 +156,7 @@ def _build_mistral_payload_image(image_url: str, as_object: bool = False) -> Dic
     }
     if MISTRAL_OCR_STRUCTURED:
         payload.update(_mistral_annotation_formats())
-    if MISTRAL_OCR_INCLUDE_IMAGE_BASE64:
-        payload["include_image_base64"] = True
+    payload["include_image_base64"] = True
     return payload
 
 
@@ -223,6 +222,8 @@ def _extract_text_and_assets_from_mistral_response(data: Dict[str, Any]) -> Tupl
     pages = data.get("pages", []) or []
     updated_pages = _apply_summaries_to_pages(pages)
     extracted = _build_extracted_markdown(updated_pages)
+    if not extracted:
+        logger.warning("Mistral OCR produced empty markdown/text. keys=%s", sorted(list(data.keys())))
 
     # Optional extra structured block from document-level annotation
     doc_anno = data.get("document_annotation")
@@ -253,7 +254,22 @@ def _build_extracted_markdown(pages: List[Dict[str, Any]]) -> str:
         for p in sorted_pages
         if str(p.get("text", "")).strip()
     ).strip()
-    return _normalize_markdown_text(fallback_text)
+    if not fallback_text:
+        return ""
+
+    # Keep plain OCR text raw and only append image references.
+    refs: List[str] = []
+    seen: Set[str] = set()
+    for page in sorted_pages:
+        for idx, img in enumerate(page.get("images", []) or []):
+            img_id = str(img.get("id", "")).strip()
+            if not img_id or img_id in seen:
+                continue
+            seen.add(img_id)
+            refs.append(f"![img-{idx}]({img_id})")
+    if refs:
+        return f"{fallback_text}\n\n" + "\n".join(refs)
+    return fallback_text
 
 
 def _page_markdown_with_image_refs(page: Dict[str, Any]) -> str:
