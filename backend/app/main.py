@@ -393,23 +393,49 @@ def _apply_image_source_policy(llm_messages: List[Dict[str, str]], image_mode: s
 
 
 def _build_available_documents_context(docs: List[Dict]) -> str:
-    """Build a fallback context listing available ready documents."""
+    """Build fallback context listing conversation-visible documents by status."""
     ready_names = []
-    seen = set()
+    processing_names = []
+    error_names = []
+    seen_ready = set()
+    seen_processing = set()
+    seen_error = set()
     for doc in docs or []:
-        if doc.get("status") != "ready":
-            continue
         name = (doc.get("filename") or "").strip()
-        if not name or name in seen:
+        if not name:
             continue
-        seen.add(name)
-        ready_names.append(name)
+        status = (doc.get("status") or "").strip().lower()
+        if status == "ready":
+            if name in seen_ready:
+                continue
+            seen_ready.add(name)
+            ready_names.append(name)
+            continue
+        if status == "processing":
+            if name in seen_processing:
+                continue
+            seen_processing.add(name)
+            processing_names.append(name)
+            continue
+        if status == "error":
+            if name in seen_error:
+                continue
+            seen_error.add(name)
+            error_names.append(name)
 
-    if not ready_names:
+    if not ready_names and not processing_names and not error_names:
         return ""
 
     lines = ["[Available documents in this workspace:]"]
-    lines.extend(f"- {name}" for name in ready_names[:50])
+    if ready_names:
+        lines.append("- Ready:")
+        lines.extend(f"  - {name}" for name in ready_names[:50])
+    if processing_names:
+        lines.append("- Processing:")
+        lines.extend(f"  - {name}" for name in processing_names[:20])
+    if error_names:
+        lines.append("- Error:")
+        lines.extend(f"  - {name}" for name in error_names[:20])
     return "\n".join(lines)
 
 
@@ -591,6 +617,21 @@ async def send_message(
                 has_doc_context = True
     except Exception as e:
         logger.warning(f"RAG injection failed: {e}")
+
+    # Hard fallback: even if retrieval failed, keep conversation document visibility in context.
+    if not has_doc_context:
+        try:
+            docs = documents_mod.list_documents(
+                user_id=current_user["id"],
+                chat_id=conversation_id,
+                scope="chat",
+            )
+            docs_context = _build_available_documents_context(docs)
+            _inject_system_context(llm_messages, docs_context)
+            if docs_context:
+                has_doc_context = True
+        except Exception as e:
+            logger.warning(f"Conversation docs fallback failed: {e}")
 
     if has_doc_context:
         _apply_document_access_policy(llm_messages)
