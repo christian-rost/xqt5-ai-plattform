@@ -371,6 +371,35 @@ def _build_available_documents_context(docs: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+def _build_document_text_fallback_context(rows: List[Dict]) -> str:
+    """Build fallback context from extracted document text (including OCR output)."""
+    parts = ["[Document text fallback context:]"]
+    added = 0
+    for row in rows or []:
+        text = (row.get("extracted_text") or "").strip()
+        if not text:
+            continue
+        filename = row.get("filename", "unknown")
+        parts.append(f"\n--- {filename} ---\n{text[:3500]}")
+        added += 1
+        if added >= 3:
+            break
+    if added == 0:
+        return ""
+    return "\n".join(parts)
+
+
+def _apply_document_access_policy(llm_messages: List[Dict[str, str]]) -> None:
+    """Prevent non-grounded 'no access' answers once document context is injected."""
+    policy = (
+        "DOCUMENT ACCESS POLICY:\n"
+        "- You are provided extracted workspace document content in this prompt.\n"
+        "- Do NOT claim you cannot access files/documents.\n"
+        "- Base your answer strictly on provided context. If context is insufficient, say what is missing."
+    )
+    _inject_system_context(llm_messages, policy)
+
+
 async def _auto_name_conversation(conversation_id: str, user_message: str) -> None:
     """Generate a short title for the conversation using the LLM."""
     try:
@@ -440,56 +469,79 @@ async def send_message(
 
     # RAG: inject relevant document context
     rag_sources = []
+    has_doc_context = False
     try:
-        if documents_mod.has_ready_documents(current_user["id"], conversation_id):
-            chunks = await rag_mod.search_similar_chunks(
+        query_intent = rag_mod.detect_query_intent(payload.content)
+        chunks = await rag_mod.retrieve_chunks_with_strategy(
+            query=payload.content,
+            user_id=current_user["id"],
+            chat_id=conversation_id,
+            intent=query_intent,
+        )
+        if chunks:
+            rag_context = rag_mod.build_rag_context(chunks)
+            rag_sources = [
+                {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
+                for c in chunks
+            ]
+            _inject_system_context(llm_messages, rag_context)
+            has_doc_context = True
+        else:
+            docs = documents_mod.list_documents(
+                user_id=current_user["id"],
+                chat_id=conversation_id,
+                scope="all",
+            )
+            docs_context = _build_available_documents_context(docs)
+            _inject_system_context(llm_messages, docs_context)
+
+        should_try_images = rag_mod.should_use_image_retrieval(payload.content, image_mode)
+        if not should_try_images and image_mode == "auto" and query_intent == "summary":
+            # Summary prompts should still try visual retrieval.
+            should_try_images = True
+        if not should_try_images and image_mode == "auto" and not chunks:
+            should_try_images = True
+
+        if should_try_images:
+            assets = await rag_mod.search_similar_assets(
                 query=payload.content,
                 user_id=current_user["id"],
                 chat_id=conversation_id,
+                top_k=8 if query_intent == "summary" else 5,
+                threshold=0.0 if query_intent == "summary" else rag_mod.RAG_SIMILARITY_THRESHOLD,
             )
-            if chunks:
-                rag_context = rag_mod.build_rag_context(chunks)
-                rag_sources = [
-                    {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
-                    for c in chunks
-                ]
-                _inject_system_context(llm_messages, rag_context)
-            else:
-                docs = documents_mod.list_documents(
-                    user_id=current_user["id"],
-                    chat_id=conversation_id,
-                    scope="all",
-                )
-                docs_context = _build_available_documents_context(docs)
-                _inject_system_context(llm_messages, docs_context)
+            image_context = rag_mod.build_image_rag_context(assets)
+            _inject_system_context(llm_messages, image_context)
+            if image_context:
+                has_doc_context = True
+            rag_image_sources = [
+                {
+                    "asset_id": a.get("asset_id"),
+                    "document_id": a.get("document_id"),
+                    "filename": a.get("filename"),
+                    "page_number": a.get("page_number"),
+                    "caption": a.get("caption"),
+                    "url": a.get("storage_path"),
+                    "similarity": round(a.get("similarity", 0), 3),
+                }
+                for a in assets
+            ]
 
-            should_try_images = rag_mod.should_use_image_retrieval(payload.content, image_mode)
-            if not should_try_images and image_mode == "auto" and not chunks:
-                # For generic prompts like "summarize the document", still try visual retrieval
-                should_try_images = True
-
-            if should_try_images:
-                assets = await rag_mod.search_similar_assets(
-                    query=payload.content,
-                    user_id=current_user["id"],
-                    chat_id=conversation_id,
-                )
-                image_context = rag_mod.build_image_rag_context(assets)
-                _inject_system_context(llm_messages, image_context)
-                rag_image_sources = [
-                    {
-                        "asset_id": a.get("asset_id"),
-                        "document_id": a.get("document_id"),
-                        "filename": a.get("filename"),
-                        "page_number": a.get("page_number"),
-                        "caption": a.get("caption"),
-                        "url": a.get("storage_path"),
-                        "similarity": round(a.get("similarity", 0), 3),
-                    }
-                    for a in assets
-                ]
+        if not has_doc_context:
+            text_rows = documents_mod.list_ready_document_texts(
+                user_id=current_user["id"],
+                chat_id=conversation_id,
+                limit=3,
+            )
+            text_context = _build_document_text_fallback_context(text_rows)
+            _inject_system_context(llm_messages, text_context)
+            if text_context:
+                has_doc_context = True
     except Exception as e:
         logger.warning(f"RAG injection failed: {e}")
+
+    if has_doc_context:
+        _apply_document_access_policy(llm_messages)
 
     if payload.stream:
         return StreamingResponse(
@@ -1482,51 +1534,73 @@ async def send_pool_message(
 
     # RAG: inject relevant pool document context
     rag_sources = []
+    has_doc_context = False
     try:
-        if pools_mod.has_ready_pool_documents(pool_id):
-            chunks = await rag_mod.search_similar_chunks(
+        query_intent = rag_mod.detect_query_intent(payload.content)
+        chunks = await rag_mod.retrieve_chunks_with_strategy(
+            query=payload.content,
+            user_id=current_user["id"],
+            pool_id=pool_id,
+            intent=query_intent,
+        )
+        if chunks:
+            rag_context = rag_mod.build_rag_context(chunks)
+            rag_sources = [
+                {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
+                for c in chunks
+            ]
+            _inject_system_context(llm_messages, rag_context)
+            has_doc_context = True
+        else:
+            pool_docs = pools_mod.list_pool_documents(pool_id)
+            docs_context = _build_available_documents_context(pool_docs)
+            _inject_system_context(llm_messages, docs_context)
+
+        should_try_images = rag_mod.should_use_image_retrieval(payload.content, image_mode)
+        if not should_try_images and image_mode == "auto" and query_intent == "summary":
+            should_try_images = True
+        if not should_try_images and image_mode == "auto" and not chunks:
+            should_try_images = True
+
+        if should_try_images:
+            assets = await rag_mod.search_similar_assets(
                 query=payload.content,
                 user_id=current_user["id"],
                 pool_id=pool_id,
+                top_k=8 if query_intent == "summary" else 5,
+                threshold=0.0 if query_intent == "summary" else rag_mod.RAG_SIMILARITY_THRESHOLD,
             )
-            if chunks:
-                rag_context = rag_mod.build_rag_context(chunks)
-                rag_sources = [
-                    {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
-                    for c in chunks
-                ]
-                _inject_system_context(llm_messages, rag_context)
-            else:
-                pool_docs = pools_mod.list_pool_documents(pool_id)
-                docs_context = _build_available_documents_context(pool_docs)
-                _inject_system_context(llm_messages, docs_context)
+            image_context = rag_mod.build_image_rag_context(assets)
+            _inject_system_context(llm_messages, image_context)
+            if image_context:
+                has_doc_context = True
+            rag_image_sources = [
+                {
+                    "asset_id": a.get("asset_id"),
+                    "document_id": a.get("document_id"),
+                    "filename": a.get("filename"),
+                    "page_number": a.get("page_number"),
+                    "caption": a.get("caption"),
+                    "url": a.get("storage_path"),
+                    "similarity": round(a.get("similarity", 0), 3),
+                }
+                for a in assets
+            ]
 
-            should_try_images = rag_mod.should_use_image_retrieval(payload.content, image_mode)
-            if not should_try_images and image_mode == "auto" and not chunks:
-                should_try_images = True
-
-            if should_try_images:
-                assets = await rag_mod.search_similar_assets(
-                    query=payload.content,
-                    user_id=current_user["id"],
-                    pool_id=pool_id,
-                )
-                image_context = rag_mod.build_image_rag_context(assets)
-                _inject_system_context(llm_messages, image_context)
-                rag_image_sources = [
-                    {
-                        "asset_id": a.get("asset_id"),
-                        "document_id": a.get("document_id"),
-                        "filename": a.get("filename"),
-                        "page_number": a.get("page_number"),
-                        "caption": a.get("caption"),
-                        "url": a.get("storage_path"),
-                        "similarity": round(a.get("similarity", 0), 3),
-                    }
-                    for a in assets
-                ]
+        if not has_doc_context:
+            text_rows = documents_mod.list_ready_pool_document_texts(
+                pool_id=pool_id,
+                limit=3,
+            )
+            text_context = _build_document_text_fallback_context(text_rows)
+            _inject_system_context(llm_messages, text_context)
+            if text_context:
+                has_doc_context = True
     except Exception as e:
         logger.warning(f"Pool RAG injection failed: {e}")
+
+    if has_doc_context:
+        _apply_document_access_policy(llm_messages)
 
     if payload.stream:
         return StreamingResponse(

@@ -25,6 +25,19 @@ IMAGE_QUERY_KEYWORDS = {
     "chartanalyse", "visual", "visuell", "tabellenbild", "plot",
 }
 
+SUMMARY_QUERY_KEYWORDS = {
+    "summarize", "summary", "overview", "abstract", "recap",
+    "zusammenfassen", "zusammenfassung", "fasse", "überblick", "ueberblick",
+}
+
+
+def detect_query_intent(query: str) -> str:
+    """Return a coarse retrieval intent: summary or fact."""
+    q = (query or "").lower()
+    if any(keyword in q for keyword in SUMMARY_QUERY_KEYWORDS):
+        return "summary"
+    return "fact"
+
 
 def should_use_image_retrieval(query: str, image_mode: str) -> bool:
     """Decide whether image retrieval should run for a query."""
@@ -182,6 +195,41 @@ async def search_similar_chunks(
     result = supabase.rpc("match_document_chunks", params).execute()
 
     return result.data or []
+
+
+async def retrieve_chunks_with_strategy(
+    query: str,
+    user_id: str,
+    chat_id: Optional[str] = None,
+    pool_id: Optional[str] = None,
+    intent: str = "fact",
+) -> List[Dict[str, Any]]:
+    """Adaptive retrieval with fallback passes for generic/summary prompts."""
+    plans: List[Tuple[int, float]]
+    if intent == "summary":
+        plans = [
+            (max(RAG_TOP_K, 8), max(RAG_SIMILARITY_THRESHOLD * 0.7, 0.08)),
+            (max(RAG_TOP_K * 2, 12), 0.0),
+        ]
+    else:
+        plans = [
+            (RAG_TOP_K, RAG_SIMILARITY_THRESHOLD),
+            (max(RAG_TOP_K + 3, 8), max(RAG_SIMILARITY_THRESHOLD * 0.6, 0.08)),
+        ]
+
+    for top_k, threshold in plans:
+        chunks = await search_similar_chunks(
+            query=query,
+            user_id=user_id,
+            chat_id=chat_id,
+            pool_id=pool_id,
+            top_k=top_k,
+            threshold=threshold,
+        )
+        if chunks:
+            return chunks
+
+    return []
 
 
 async def search_similar_assets(
