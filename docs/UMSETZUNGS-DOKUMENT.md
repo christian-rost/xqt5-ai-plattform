@@ -63,7 +63,7 @@
 | `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste (+ deployment_name für Azure) |
 | `app_provider_keys` | XQT5 AI Plattform | Verschlüsselte Provider-API-Keys + Azure-Config |
 | `app_audit_logs` | XQT5 AI Plattform | Audit-Log-Einträge |
-| `app_documents` | XQT5 AI Plattform | Hochgeladene Dokumente (PDF/TXT) mit Status + pool_id |
+| `app_documents` | XQT5 AI Plattform | Hochgeladene Dokumente (PDF/TXT/Bild) mit Status + pool_id |
 | `app_document_chunks` | XQT5 AI Plattform | Dokument-Chunks mit Embeddings (vector(1536)) |
 | `pool_pools` | XQT5 AI Plattform | Pool-Metadaten (name, description, icon, color, owner_id) |
 | `pool_members` | XQT5 AI Plattform | Pool-Mitgliedschaften mit Rolle (viewer/editor/admin) |
@@ -94,7 +94,7 @@
    - Domain: `ai-hub.xqtfive.com`
    - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 4. `CORS_ORIGINS` im Backend auf Frontend-Domain setzen
-5. Supabase-Migrationen ausführen (initial + phase_a + phase_b + phase_c + phase_c_rag + phase_d + phase_d_token_version_revocation + pools)
+5. Supabase-Migrationen in numerischer Reihenfolge ausführen (alle Dateien unter `supabase/migrations/`)
    - **Wichtig**: pgvector Extension muss vor der RAG-Migration aktiviert sein (Dashboard → Database → Extensions → vector)
 
 ### Phase B: User & Kosten-Management (2026-02-15)
@@ -236,11 +236,11 @@
    - `app_documents` Tabelle (user_id, chat_id nullable, filename, file_type, file_size_bytes, extracted_text, chunk_count, status, error_message)
    - `app_document_chunks` Tabelle (document_id, chunk_index, content, token_count, embedding vector(1536))
    - HNSW-Index auf embedding (vector_cosine_ops)
-   - RPC `match_document_chunks()`: Sucht Chat-Dokumente + globale Dokumente des Users nach Similarity
+   - RPC `match_document_chunks()`: Scope-basierte Similarity-Suche (Conversation, Pool oder global)
 2. **Documents-Modul** (`backend/app/documents.py`):
-   - `extract_text()` (async): PDF via pypdf, TXT via UTF-8
-   - **OCR-Fallback**: Wenn pypdf < 50 Zeichen extrahiert (gescannte PDFs), wird `_ocr_pdf_mistral()` aufgerufen
-   - `_ocr_pdf_mistral()`: Sendet PDF als base64 data-URI an Mistral OCR API (`mistral-ocr-latest`), gibt Markdown zurück
+   - `extract_text()` / `extract_text_and_assets()` (async): PDF/Bild via Mistral OCR API, TXT via UTF-8
+   - `_ocr_pdf_mistral_with_assets()`: Sendet PDF als base64 data-URI an Mistral OCR API (`mistral-ocr-latest`), gibt Text + OCR-Assets zurück
+   - `_ocr_image_mistral()`: Verarbeitet Bild-Uploads (`PNG/JPG/JPEG/WEBP`) über Mistral OCR API
    - Mistral API-Key via `providers.get_api_key("mistral")` (DB mit Env-Fallback)
    - Keine zusätzlichen System-Pakete nötig (kein Tesseract/Poppler)
    - CRUD: `create_document()`, `update_document_status()`, `list_documents()`, `get_document()`, `delete_document()`
@@ -254,16 +254,16 @@
 4. **Config** (`backend/app/config.py`): 7 neue Variablen (EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, CHUNK_SIZE, CHUNK_OVERLAP, RAG_TOP_K, RAG_SIMILARITY_THRESHOLD, MAX_UPLOAD_SIZE_MB)
 5. **Token-Tracking** (`backend/app/token_tracking.py`): Embedding-Kosten (text-embedding-3-small/large)
 6. **API-Endpoints** (`backend/app/main.py`):
-   - `POST /api/documents/upload` — UploadFile + Form(chat_id), extrahiert Text, erzeugt Chunks+Embeddings
+   - `POST /api/documents/upload` — UploadFile + Form(chat_id), unterstützt PDF/TXT/Bild, extrahiert Text, erzeugt Chunks+Embeddings
    - `GET /api/documents?chat_id=&scope=` — Dokument-Liste
    - `DELETE /api/documents/{id}` — Löschen (CASCADE auf Chunks)
    - `POST /api/rag/search` — Debug/Test-Endpoint für Similarity-Suche
 7. **RAG-Injection** in `send_message()`:
    - Prüft ob User ready Docs hat, sucht ähnliche Chunks, injiziert als System-Message-Kontext
    - `rag_sources` Liste wird in Stream-Done-Event und Non-Streaming-Response mitgegeben
-8. **Dependencies**: `pypdf>=4.0.0` in pyproject.toml und Dockerfile
+8. **Dependencies**: OCR läuft über Mistral API; `pypdf` ist aktuell noch als Legacy-Dependency in `pyproject.toml` enthalten
 9. **Frontend-Komponenten**:
-   - `FileUpload.jsx`: Clip-Icon Button mit Hidden File-Input (PDF/TXT)
+   - `FileUpload.jsx`: Clip-Icon Button mit Hidden File-Input (PDF/TXT/PNG/JPG/JPEG/WEBP)
    - `DocumentList.jsx`: Dokument-Tags (Icon + Name + Chunks + Status + Delete)
    - `SourceDisplay.jsx`: "Sources:" Label mit Filename-Tags unter Assistant-Nachrichten
 10. **Frontend-Änderungen**:
@@ -339,32 +339,43 @@
    - Auth: `get_user_pool_role()` → owner/admin/editor/viewer/None, `require_pool_role()` → HTTP 403
    - Members: `add_member()`, `list_members()`, `update_member_role()`, `remove_member()`, `find_user_by_username()`
    - Invites: `create_invite_link()`, `get_invite_by_token()`, `use_invite_link()`, `list_invite_links()`, `revoke_invite_link()`
-   - Pool Docs: `list_pool_documents()`, `has_ready_pool_documents()`
+   - Pool Docs: `list_pool_documents()`, `get_pool_document_preview()`, `has_ready_pool_documents()`
    - Pool Chats: `create_pool_chat()`, `list_pool_chats()`, `get_pool_chat()`, `add_pool_chat_message()`, `delete_pool_chat()`
 3. **Bestehende Module erweitert**:
    - `documents.py`: `create_document()` bekommt `pool_id` Parameter
    - `rag.py`: `search_similar_chunks()` bekommt `pool_id` Parameter, wird an RPC weitergegeben
    - `models.py`: 8 neue Pydantic-Modelle (CreatePoolRequest, AddPoolMemberRequest, CreateInviteLinkRequest, JoinPoolRequest, CreatePoolChatRequest, SendPoolMessageRequest, etc.)
-4. **API-Endpunkte** (`main.py`, ~25 neue Routes):
+4. **API-Endpunkte** (`main.py`):
    - Pool CRUD: POST/GET/PATCH/DELETE `/api/pools`
    - Members: GET/POST/PATCH/DELETE `/api/pools/{pool_id}/members`
    - Invites: GET/POST/DELETE `/api/pools/{pool_id}/invites`, POST `/api/pools/join`
-   - Documents: GET/POST/DELETE `/api/pools/{pool_id}/documents`
+   - Documents: GET/POST/DELETE `/api/pools/{pool_id}/documents` + GET `/api/pools/{pool_id}/documents/{document_id}/preview`
    - Chats: GET/POST/DELETE `/api/pools/{pool_id}/chats`, POST `/api/pools/{pool_id}/chats/{chat_id}/message`
 
 #### Frontend
-5. **API-Client** (`api.js`): ~20 neue Methoden für alle Pool-Endpunkte
+5. **API-Client** (`api.js`): Pool-Endpunkte inkl. Dokumentvorschau (`getPoolDocumentPreview`)
 6. **Neue Komponenten** (8 Dateien):
    - `PoolList.jsx` — Sidebar-Sektion mit Pool-Liste
    - `CreatePoolDialog.jsx` — Modal: Pool erstellen
    - `PoolDetail.jsx` — Hauptansicht mit Tabs (Dokumente/Chats/Mitglieder)
-   - `PoolDocuments.jsx` — Dokumentenliste + Upload (nutzt bestehende FileUpload/DocumentList)
+   - `PoolDocuments.jsx` — Dokumentenliste + Upload + Vorschau-Modal
    - `PoolChatList.jsx` — Shared + private Chats
    - `PoolChatArea.jsx` — Chat-Ansicht (nutzt bestehende MessageBubble/MessageInput/SourceDisplay)
    - `PoolMembers.jsx` — Mitgliederliste mit Rollen-Management
    - `PoolShareDialog.jsx` — Invite-Link-Dialog
 7. **App.jsx Änderungen**: Neuer State (pools, activePool, activePoolView, activePoolChat), mutually exclusive mit activeConversation
 8. **Sidebar.jsx**: PoolList-Integration
+
+#### Phase E Update (2026-02-19): Dokumentvorschau im Pool
+9. **Neuer Endpoint** (`main.py`):
+   - `GET /api/pools/{pool_id}/documents/{document_id}/preview`
+   - Zugriff für alle Pool-Mitglieder (ab Rolle `viewer`)
+10. **Preview-Logik** (`pools.py`):
+   - Liefert `text_preview`, `text_length`, `truncated` für Dokumente
+   - Liefert bei Bild-Dokumenten optional `image_data_url` aus `app_document_assets`
+11. **Frontend-UX** (`PoolDocuments.jsx` + `styles.css`):
+   - Vorschau-Button pro Dokument
+   - Modal mit Textvorschau (gekürzt) und optionaler Bildansicht
 
 #### Design-Entscheidungen
 - `app_documents` wird wiederverwendet (statt eigener pool_documents), weil `app_document_chunks` per FK darauf verweist — hält Embedding-Pipeline unverändert
@@ -393,7 +404,7 @@
 - `exc_info=True` bei allen RAG-Exception-Logs für vollständige Stack-Traces
 
 #### Design-Entscheidungen
-- **Keine globalen Dokumente**: Phase 2 (globales Supplement) entfernt — vereinfacht Code, spart DB-Abfrage
+- **Globale Dokumente weiterhin API-seitig vorhanden**: Scope `chat_id IS NULL` wird weiterhin unterstützt (z. B. in Dokumentlisten/Fallback-Pfaden); Haupt-UI-Fluss bleibt chat- und pool-zentriert
 - **Conversations: Wide-Net-Retrieval**: Statt threshold-Filterung alle verfügbaren Chunks abrufen und in Dokumentreihenfolge sortieren; relevanter für Einzeldokument-Conversations
 - **Hybrid Search**: ILIKE-Supplement garantiert dass Kapitel mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen
 

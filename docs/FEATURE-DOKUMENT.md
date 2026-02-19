@@ -42,8 +42,8 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 6. Assistenten-Selector in Sidebar + Manager-Modal
 7. Template-Manager-Modal
 ### Schritt 2: File Upload + RAG-Pipeline (umgesetzt 2026-02-16)
-1. Datei-Upload (PDF, TXT) pro Chat oder als globale Wissensbasis
-2. Text-Extraktion via pypdf (PDF) / UTF-8 (TXT), OCR-Fallback via Mistral OCR API für gescannte PDFs
+1. Datei-Upload (PDF, TXT, PNG, JPG, JPEG, WEBP) pro Chat (API-seitig optional auch ohne Chat-ID)
+2. Text-Extraktion via Mistral OCR API (PDF/Bild) bzw. UTF-8 (TXT)
 3. Paragraph-aware Chunking mit konfigurierbarer Größe und Overlap
 4. OpenAI Embeddings (text-embedding-3-small, 1536 Dimensionen)
 5. pgvector HNSW-Index für schnelle Cosine-Similarity-Suche
@@ -78,18 +78,19 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 3. Deaktivierte User standardmäßig ausgeblendet, mit Toggle einblendbar (grau dargestellt)
 4. Default-Modell aus DB (`is_default` in `app_model_config`) wird jetzt vom Frontend respektiert
 ## Phase E: Pools — Geteilte Dokumentensammlungen (umgesetzt 2026-02-18)
-Pools sind geteilte Dokumentensammlungen (vergleichbar mit Google NotebookLM), in denen mehrere Nutzer Dokumente ablegen und per Chat RAG-gestützte Fragen dazu stellen können.
+Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente ablegen und per Chat RAG-gestützte Fragen dazu stellen können.
 
 ### Kernfeatures
 1. Pool erstellen mit Name, Beschreibung, Icon und Farbe
-2. Dokumente in Pool hochladen (PDF, TXT) — Chunking + Embedding wie bei bestehender RAG-Pipeline
-3. 3-stufiges Berechtigungsmodell: Viewer (lesen + fragen), Editor (+ Dokumente verwalten), Admin (+ Mitglieder verwalten), Owner (implizit, immer Admin)
+2. Dokumente in Pool hochladen (PDF, TXT, PNG, JPG, JPEG, WEBP) — Chunking + Embedding wie bei bestehender RAG-Pipeline
+3. 4-stufiges Berechtigungsmodell: Viewer (lesen + fragen), Editor (+ Dokumente verwalten), Admin (+ Mitglieder verwalten), Owner (implizit, immer Admin)
 4. Mitglieder einladen per Username (Admin+)
 5. Share-Link generieren mit Rolle und optionalem Limit (max Uses, Ablaufdatum)
 6. Shared Pool-Chat: Alle Mitglieder sehen denselben Chatverlauf mit RAG-Kontext
 7. Private Pool-Chats: Jeder Nutzer kann eigene private Chats gegen Pool-Dokumente führen
 8. RAG-Suche auf Pool-Scope (nur Dokumente des Pools, nicht des Users)
 9. Source-Attribution in Pool-Chats
+10. Dokumentvorschau im Pool-Dokumenttab (Textvorschau für PDF/TXT, Bildvorschau für Bild-Uploads)
 
 ### Neue Tabellen
 - `pool_pools` — Pool-Metadaten + owner_id
@@ -100,12 +101,19 @@ Pools sind geteilte Dokumentensammlungen (vergleichbar mit Google NotebookLM), i
 - `app_documents` erweitert um `pool_id` Spalte
 
 ### Neue Backend-Module
-- `pools.py` — Pool CRUD, Members, Invites, Chats
-- ~25 neue API-Endpunkte unter `/api/pools/...`
+- `pools.py` — Pool CRUD, Members, Invites, Chats, Dokumentvorschau
+- API-Endpunkte unter `/api/pools/...` inkl. Dokumentvorschau
 
 ### Neue Frontend-Komponenten
 - PoolList, CreatePoolDialog, PoolDetail (Tabs: Dokumente/Chats/Mitglieder)
 - PoolDocuments, PoolChatList, PoolChatArea, PoolMembers, PoolShareDialog
+
+### Phase E Update: Pool-Dokumentvorschau (umgesetzt 2026-02-19)
+1. Neuer API-Endpunkt: `GET /api/pools/{pool_id}/documents/{document_id}/preview`
+2. Rollenmodell: Zugriff ab Pool-Rolle `viewer`
+3. Rückgabe enthält gekürzte Textvorschau (`text_preview`) inkl. Längen-/Truncation-Info
+4. Für Bild-Dokumente wird optional `image_data_url` aus `app_document_assets` geliefert
+5. Frontend: `PoolDocuments` ergänzt um Vorschau-Button und Modal
 
 ## Noch geplant
 1. Workflow-Engine für automatisierte Abläufe

@@ -1,6 +1,6 @@
 # Anwender Quickstart
 
-Stand: 18.02.2026  
+Stand: 19.02.2026  
 Produkt: **XQT5 AI Plattform**
 
 ## 1. Ziel in 5 Minuten
@@ -19,7 +19,7 @@ Nach diesem Quickstart kannst du:
 flowchart LR
     A["Login"] --> B["Neuen Chat erstellen"]
     B --> C["Modell waehlen"]
-    C --> D["Dokument hochladen (PDF/TXT)"]
+    C --> D["Dokument hochladen (PDF/TXT/Bild)"]
     D --> E["Frage stellen"]
     E --> F["Antwort mit Quellen"]
 ```
@@ -42,7 +42,7 @@ flowchart LR
 
 ### Schritt 3: Dokument hinzufuegen (RAG)
 
-1. Lade eine Datei hoch (`.pdf` oder `.txt`).
+1. Lade eine Datei hoch (`.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`).
 2. Warte bis der Status verarbeitet ist.
 3. Stelle dann eine konkrete Frage zum Inhalt.
 
@@ -92,14 +92,24 @@ Pool-Rollen:
 - Admin: zusaetzlich Mitglieder/Einladungen verwalten
 - Owner: Pool-Besitzer
 
+PoolsViewer (aktueller Stand):
+1. Oeffne im Pool den Tab "Dokumente".
+2. Klicke bei einem Dokument auf "Vorschau".
+3. Im Modal siehst du:
+   - bei PDF/TXT: Textvorschau
+   - bei Bildern: Bildansicht (plus ggf. Text)
+4. Bei sehr langen Inhalten wird die Vorschau gekuerzt angezeigt.
+
 ## 7. Wenn etwas nicht funktioniert
 
 - Kein Modell sichtbar:
   - Admin muss Modell/Provider aktivieren.
 - Dokumentverarbeitung schlaegt fehl:
-  - Dateityp pruefen (`PDF/TXT`), Datei ggf. kleiner machen.
+  - Dateityp pruefen (`PDF/TXT/Bild`), Datei ggf. kleiner machen.
 - Keine Quellen bei Antwort:
   - pruefen, ob Dokumentstatus "ready" ist.
+- Keine/zu kurze Vorschau im Pool:
+  - Vorschau zeigt Textauszug; bei sehr langen Dokumenten ist sie gekuerzt.
 - Login/Session bricht ab:
   - ggf. neu einloggen (Token wurde evtl. invalidiert).
 

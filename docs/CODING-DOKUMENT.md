@@ -72,8 +72,8 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **is_active Enforcement auf Refresh**: Deaktivierte User können nicht nur keine neuen Access-Tokens nutzen, sondern auch kein Refresh durchführen. Fehlermeldung: "Account is inactive".
 - **Proxy-Headers**: Uvicorn mit `--proxy-headers` und `FORWARDED_ALLOW_IPS` für korrekte IP-Erkennung hinter Coolify-Proxy.
 
-### 2026-02-17 (OCR für gescannte PDFs)
-- **OCR-Fallback via Mistral OCR API**: `extract_text()` ist jetzt `async`. Wenn pypdf weniger als 50 Zeichen aus einem PDF extrahiert (typisch für gescannte PDFs ohne Text-Layer), wird `_ocr_pdf_mistral()` aufgerufen.
+### 2026-02-17 (OCR für PDFs/Bilder)
+- **OCR via Mistral OCR API**: `extract_text()`/`extract_text_and_assets()` sind async und nutzen für PDF/Bild den Mistral-OCR-Flow direkt.
 - **Mistral OCR API**: `POST https://api.mistral.ai/v1/ocr` mit `mistral-ocr-latest` Modell. PDF wird als base64 data-URI gesendet, Antwort enthält Markdown pro Seite.
 - **API-Key**: Via `providers.get_api_key("mistral")` (DB mit Env-Fallback). Ohne Key gibt es eine klare Fehlermeldung.
 - **Keine System-Pakete**: Kein Tesseract/Poppler im Docker nötig — rein API-basiert.
@@ -96,7 +96,7 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 ### 2026-02-18 (Phase E — Pools)
 - **Pools: Geteilte Dokumentensammlungen mit RAG implementiert.**
   5 neue Tabellen (`pool_pools`, `pool_members`, `pool_invite_links`, `pool_chats`, `pool_chat_messages`), `app_documents` erweitert um `pool_id`, `match_document_chunks()` RPC erweitert um `match_pool_id`.
-- **Neues Backend-Modul** `pools.py`: Pool CRUD, Members, Invite Links, Pool Chats. ~25 neue API-Endpunkte.
+- **Neues Backend-Modul** `pools.py`: Pool CRUD, Members, Invite Links, Pool Chats und Dokumentvorschau.
 - **8 neue Frontend-Komponenten**: PoolList, CreatePoolDialog, PoolDetail, PoolDocuments, PoolChatList, PoolChatArea, PoolMembers, PoolShareDialog.
 - **Design-Entscheidung**: `app_documents` wiederverwendet statt eigener `pool_documents` Tabelle — hält gesamte Embedding-Pipeline (Chunking, Embedding, Search) unverändert.
 - **Design-Entscheidung**: Owner ist NICHT in `pool_members` — Ownership implizit über `pool_pools.owner_id`. Vereinfacht Ownership-Transfer und verhindert Inkonsistenzen.
@@ -121,11 +121,18 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   Ursache: Listenbasierte Kapitel (z.B. "Projektrollen") haben niedrige Kosinus-Ähnlichkeit zu Fragebogen-Queries obwohl direkt relevant. Mit nur 5 Chunks wurden solche Kapitel nie geliefert.
   Korrektur: Conversations nutzen jetzt `top_k=50, threshold=0.0` — alle Chunks werden nach Ähnlichkeit sortiert, dann in Dokumentreihenfolge (`chunk_index`) ans LLM übergeben. Cohere Reranker (optional) selektiert beste Chunks aus dem breiten Kandidatenset.
 
-- **Design-Entscheidung: Keine globalen Dokumente.**
-  Da es keine globalen Dokumente gibt, wurde Phase 2 (globales Supplement) aus `_search_chunks_two_phase()` entfernt. Funktion umbenannt zu `_search_chunks_hybrid()`.
+- **Design-Entscheidung: globale Dokumente bleiben API-seitig möglich.**
+  Scope-spezifische Retrieval-Pfade wurden bereinigt; globale Dokumente (`chat_id IS NULL`) sind weiterhin als eigener Scope vorhanden, während Hauptflüsse im UI auf Conversation/Pool fokussieren.
 
 - **Hybrid Search: Vector + Keyword ILIKE.**
   Keyword-Supplement via `_keyword_supplement_chunks()` stellt sicher, dass Chunks mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen. Stopwörter (DE+EN) werden gefiltert, min. 4 Zeichen. Keyword-Chunks werden vor Cohere-Reranking angehängt.
+
+### 2026-02-19 (PoolsViewer — Dokumentvorschau)
+- **Feature: Pool-Dokumentvorschau ergänzt.**
+  Neuer Endpoint `GET /api/pools/{pool_id}/documents/{document_id}/preview` liefert Textvorschau für PDF/TXT sowie optional Bilddaten für Bild-Uploads.
+- **Berechtigung:** Vorschau ist ab Rolle `viewer` verfügbar (`require_pool_role(..., "viewer")`).
+- **Robustheit:** Asset-Lookup für Bildvorschau ist defensiv implementiert (Fehler beim Lookup brechen die Vorschau nicht komplett ab).
+- **Frontend:** `PoolDocuments.jsx` hat einen `Vorschau`-Button pro Dokument plus Modal für Text-/Bildansicht; lange Texte werden gekürzt dargestellt (`truncated`, `text_length`).
 
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.

@@ -1,6 +1,6 @@
 # Anwender-Dokumentation
 
-Stand: 18.02.2026  
+Stand: 19.02.2026  
 Produkt: **XQT5 AI Plattform**
 
 ## 1. Ziel der Anwendung
@@ -24,7 +24,7 @@ graph TD
     A --> E["Prompt-Templates"]
     A --> F["Pools"]
 
-    C --> C1["PDF/TXT Upload"]
+    C --> C1["PDF/TXT/Bild Upload"]
     C1 --> C2["Chunking + Embeddings"]
     C2 --> C3["RAG-Kontext in Antworten"]
 
@@ -85,10 +85,11 @@ graph LR
 
 ### 4.4 Dokumente und RAG
 
-- Upload von **PDF** und **TXT**
+- Upload von **PDF**, **TXT** und **Bildern** (`PNG`, `JPG`, `JPEG`, `WEBP`)
 - Automatische Extraktion:
-  - Text-PDF via `pypdf`
-  - gescannte PDFs via OCR-Fallback (Mistral OCR)
+  - PDF via Mistral OCR
+  - Bilder via Mistral OCR
+  - TXT via UTF-8-Textimport
 - Inhalt wird gechunkt, mit Embeddings indexiert und bei passenden Fragen als Kontext zugespielt
 - Quellenhinweise werden bei Antworten angezeigt
 
@@ -108,9 +109,18 @@ flowchart TD
 - Mitglieder per Username hinzufügen
 - Invite-Links mit Rolle, Ablaufdatum, Nutzungslimit
 - Dokumente poolweit teilen
+- Dokumentvorschau direkt im Pool (Textvorschau, bei Bildern inkl. Bildansicht)
 - Zwei Chat-Typen:
   - **Shared Chat**: für alle Mitglieder sichtbar
   - **Private Chat**: nur für Ersteller sichtbar, aber gegen Pool-Wissen
+
+**PoolsViewer (aktueller Stand):**
+- In der Pool-Dokumentliste gibt es pro Dokument den Button **"Vorschau"**.
+- Vorschau ist für alle Pool-Mitglieder verfügbar (ab Rolle **Viewer**).
+- Die Vorschau öffnet sich als Modal über dem Dokument-Tab.
+- Bei PDF/TXT wird eine Textvorschau angezeigt.
+- Bei Bild-Dokumenten wird eine Bildansicht angezeigt; falls OCR/Text vorhanden ist, zusätzlich Text.
+- Lange Inhalte werden in der Vorschau gekürzt und als gekürzt gekennzeichnet.
 
 ```mermaid
 flowchart LR
@@ -145,8 +155,9 @@ flowchart LR
 1. Pool erstellen
 2. Mitglieder einladen (Rolle festlegen)
 3. Dokumente in den Pool laden
-4. Shared Chat für gemeinsame Diskussion nutzen
-5. Private Chat für persönliche Vertiefung nutzen
+4. Über **Vorschau** Dokumentinhalt vorab prüfen
+5. Shared Chat für gemeinsame Diskussion nutzen
+6. Private Chat für persönliche Vertiefung nutzen
 
 ### 5.3 Governance durch Admin
 
@@ -175,6 +186,7 @@ Umgesetzt:
 - Dokument-Upload + RAG + Quellenhinweise
 - Admin-Dashboard mit Audit/Provider/Modellen
 - Pools mit Rollen, Invite-Links, Shared/Private Chats
+- Pool-Dokumentvorschau (Text/Bild) im Dokument-Tab
 
 Noch geplant:
 

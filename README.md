@@ -18,12 +18,17 @@ Grundgerüst für eine AI-Hub-Anwendung mit:
   - Anwender-Doku: `docs/ANWENDER-DOKUMENT.md`
   - Anwender-Quickstart: `docs/ANWENDER-QUICKSTART.md`
 
-## Features (Phase A)
+## Features (Stand 19.02.2026)
 - Multi-Provider LLM Chat (OpenAI, Anthropic, Google, Mistral, X.AI)
 - SSE-Streaming mit Echtzeit-Anzeige
 - Modellauswahl und Temperatur-Steuerung
 - Auto-Benennung von Konversationen
 - Markdown-Rendering für Assistant-Nachrichten
+- Auth mit Rollen (User/Admin) und Admin-Dashboard
+- Dokument-RAG mit Upload von PDF/TXT/Bild (`png`, `jpg`, `jpeg`, `webp`) und Quellenhinweisen
+- PDF-/Bild-Extraktion über Mistral OCR API, TXT via UTF-8
+- Pools (geteilte Wissensräume) mit Rollen, Einladungen, Shared/Private Chats
+- Dokumentvorschau im Pool-Dokumenttab (Text/Bild)
 
 ## Lokaler Start
 
@@ -56,6 +61,5 @@ npm run dev
 - Build-Arg: `VITE_API_BASE=https://api.xqtfive.com`
 
 ## Datenbank
-Migrationen in Reihenfolge im Supabase SQL Editor ausführen:
-1. `supabase/migrations/20260214_initial_schema.sql` — Basis-Schema (users, llm-council-Tabellen, settings)
-2. `supabase/migrations/20260215_phase_a_model_temperature.sql` — Eigene Chat-Tabellen (chats, chat_messages)
+Migrationen in numerischer Reihenfolge im Supabase SQL Editor ausführen:
+- Alle Dateien unter `supabase/migrations/`
