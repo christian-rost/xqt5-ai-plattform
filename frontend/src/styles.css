@@ -61,6 +61,7 @@ body {
 }
 
 .new-chat-btn {
+  width: 100%;
   background: var(--color-primary);
   color: var(--color-white);
   border: none;
