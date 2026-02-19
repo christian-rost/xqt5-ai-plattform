@@ -34,13 +34,14 @@ export default function Sidebar({
         </div>
       </div>
 
-      <button
-        className="new-chat-btn"
-        onClick={onCreateConversation}
-        disabled={loading}
-      >
-        New Conversation
-      </button>
+      {user?.is_admin && (
+        <button
+          className={`sidebar-admin-btn ${showAdmin ? 'active' : ''}`}
+          onClick={onAdmin}
+        >
+          Admin
+        </button>
+      )}
 
       <AssistantSelector assistants={assistants} onSelect={onSelectAssistant} />
 
@@ -53,6 +54,13 @@ export default function Sidebar({
       />
 
       <div className="conversation-list">
+        <button
+          className="new-chat-btn"
+          onClick={onCreateConversation}
+          disabled={loading}
+        >
+          + New Conversation
+        </button>
         {conversations.length === 0 ? (
           <div className="no-conversations">No conversations yet</div>
         ) : (
@@ -80,14 +88,6 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        {user?.is_admin && (
-          <button
-            className={`sidebar-admin-btn ${showAdmin ? 'active' : ''}`}
-            onClick={onAdmin}
-          >
-            Admin-Dashboard
-          </button>
-        )}
         <div className="sidebar-actions">
           <button className="sidebar-action-btn" onClick={onManageAssistants}>Assistenten</button>
           <button className="sidebar-action-btn" onClick={onManageTemplates}>Templates</button>

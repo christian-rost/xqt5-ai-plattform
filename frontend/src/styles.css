@@ -64,12 +64,11 @@ body {
   background: var(--color-primary);
   color: var(--color-white);
   border: none;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
-  margin-top: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   transition: background 0.2s;
 }
 
@@ -1438,24 +1437,26 @@ body {
 .sidebar-admin-btn {
   width: 100%;
   padding: 10px;
-  background: var(--color-primary);
-  color: var(--color-white);
-  border: none;
+  background: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   margin-bottom: 10px;
-  transition: background 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 
 .sidebar-admin-btn:hover {
-  background: var(--color-primary-dark);
+  background: #334155;
+  color: #e2e8f0;
 }
 
 .sidebar-admin-btn.active {
-  background: var(--color-primary-dark);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  background: #334155;
+  color: #f1f5f9;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* ── Provider Management ── */
