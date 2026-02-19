@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -24,6 +25,36 @@ IMAGE_QUERY_KEYWORDS = {
     "bild", "bilder", "grafik", "grafiken", "abbildung", "abbildungen", "diagramm", "diagramme",
     "chartanalyse", "visual", "visuell", "tabellenbild", "plot",
 }
+
+_GERMAN_STOPWORDS: frozenset = frozenset({
+    "aber", "als", "also", "am", "an", "auch", "auf", "aus", "bei", "bin",
+    "bis", "bitte", "da", "damit", "dann", "das", "dass", "dem", "den", "der",
+    "des", "dessen", "die", "dies", "diese", "diesem", "diesen", "dieser",
+    "dieses", "doch", "dort", "du", "durch", "ein", "eine", "einem", "einen",
+    "einer", "eines", "einige", "er", "es", "etwa", "euch", "falls", "für",
+    "gegen", "gibt", "haben", "hat", "hatte", "hatten", "hier", "ihm", "ihn",
+    "ihnen", "ihr", "ihre", "ihrem", "ihren", "ihrer", "ihres", "im", "in",
+    "ins", "ist", "ja", "jede", "jedem", "jeden", "jeder", "jedes", "jetzt",
+    "kann", "kein", "keine", "keinem", "keinen", "keiner", "keines", "können",
+    "könnte", "man", "manche", "manchem", "manchen", "mancher", "manches",
+    "mehr", "mein", "meine", "meinem", "meinen", "meiner", "meines", "mich",
+    "mir", "mit", "muss", "nach", "nicht", "nichts", "noch", "nun", "nur",
+    "ob", "oder", "ohne", "per", "schon", "sehr", "sein", "seine", "seinem",
+    "seinen", "seiner", "seines", "sich", "sie", "sind", "so", "solche",
+    "solchem", "solchen", "solcher", "solches", "soll", "sollte", "sonst",
+    "sowie", "über", "um", "und", "uns", "unter", "vom", "von", "vor", "war",
+    "waren", "was", "weg", "weil", "weit", "welche", "welchem", "welchen",
+    "welcher", "welches", "wenn", "wer", "werden", "wie", "wieder", "will",
+    "wir", "wird", "wo", "worden", "wäre", "während", "zu", "zum", "zur",
+    "zwar", "zwischen",
+    # English stopwords (queries may be mixed)
+    "a", "about", "all", "are", "be", "been", "by", "can", "do", "for",
+    "from", "get", "give", "has", "have", "how", "i", "if", "in", "is",
+    "it", "its", "list", "me", "my", "no", "not", "of", "on", "or",
+    "please", "show", "tell", "that", "the", "their", "them", "there",
+    "they", "this", "to", "us", "was", "we", "what", "which", "who",
+    "with", "you", "your",
+})
 
 SUMMARY_QUERY_KEYWORDS = {
     "summarize", "summary", "overview", "abstract", "recap",
@@ -205,6 +236,93 @@ async def search_similar_chunks(
     return _rpc_chunks(embeddings[0], user_id, chat_id, pool_id, top_k, threshold)
 
 
+def _extract_query_keywords(query: str, max_keywords: int = 3) -> List[str]:
+    """Extract significant keywords from a query for ILIKE supplement search.
+
+    Removes stopwords and short words, returns at most max_keywords terms
+    sorted by length (longer = more specific first).
+    """
+    tokens = re.split(r"[\s,;?!.]+", query.lower())
+    keywords = [
+        t for t in tokens
+        if len(t) >= 4 and t not in _GERMAN_STOPWORDS
+    ]
+    # Sort longest first (more specific)
+    keywords = sorted(set(keywords), key=len, reverse=True)
+    return keywords[:max_keywords]
+
+
+def _keyword_supplement_chunks(
+    user_id: str,
+    chat_id: Optional[str],
+    pool_id: Optional[str],
+    keywords: List[str],
+    limit: int,
+    exclude_ids: set,
+) -> List[Dict[str, Any]]:
+    """Find chunks that literally contain one of the keywords (ILIKE).
+
+    Scope mirrors the vector search: conversation, pool, or global.
+    Returns chunks not already in exclude_ids, enriched with filename.
+    Sets similarity=0.01 as a placeholder (will be reranked by Cohere or
+    used as tiebreaker fallback).
+    """
+    if not keywords:
+        return []
+
+    # Resolve which document IDs are in scope
+    try:
+        doc_query = supabase.table("app_documents").select("id, filename").eq("status", "ready")
+        if pool_id is not None:
+            doc_query = doc_query.eq("pool_id", pool_id)
+        elif chat_id is not None:
+            doc_query = doc_query.eq("user_id", user_id).is_("pool_id", "null").eq("chat_id", chat_id)
+        else:
+            doc_query = doc_query.eq("user_id", user_id).is_("pool_id", "null").is_("chat_id", "null")
+        doc_result = doc_query.execute()
+        docs = doc_result.data or []
+    except Exception as e:
+        logger.warning("Keyword supplement: failed to fetch doc IDs: %s", e)
+        return []
+
+    if not docs:
+        return []
+
+    doc_id_to_filename = {d["id"]: d["filename"] for d in docs}
+    doc_ids = list(doc_id_to_filename.keys())
+
+    # Search chunks for each keyword, collect hits
+    supplement: List[Dict[str, Any]] = []
+    seen_chunk_ids: set = set()
+
+    for keyword in keywords:
+        if len(supplement) >= limit:
+            break
+        try:
+            rows = (
+                supabase.table("app_document_chunks")
+                .select("id, document_id, chunk_index, content, token_count")
+                .in_("document_id", doc_ids)
+                .ilike("content", f"%{keyword}%")
+                .limit(limit)
+                .execute()
+            )
+            for row in rows.data or []:
+                chunk_id = row.get("id")
+                if chunk_id in seen_chunk_ids or chunk_id in exclude_ids:
+                    continue
+                seen_chunk_ids.add(chunk_id)
+                row["filename"] = doc_id_to_filename.get(row.get("document_id", ""), "unknown")
+                row["similarity"] = 0.01  # placeholder; Cohere will rerank
+                supplement.append(row)
+                if len(supplement) >= limit:
+                    break
+        except Exception as e:
+            logger.warning("Keyword supplement: ILIKE query failed for '%s': %s", keyword, e)
+
+    return supplement
+
+
 async def _search_chunks_two_phase(
     query: str,
     user_id: str,
@@ -212,32 +330,54 @@ async def _search_chunks_two_phase(
     top_k: int,
     threshold: float,
 ) -> List[Dict[str, Any]]:
-    """Two-phase chunk search for conversation scope.
+    """Hybrid two-phase chunk search for conversation scope.
 
-    Phase 1: conversation-specific documents only (chat_id = conversation_id).
-    Phase 2: supplement with global documents (chat_id IS NULL) if Phase 1
-             returned fewer chunks than requested.
+    Phase 1 (vector): conversation-specific documents only.
+    Phase 2 (vector): supplement with global documents if Phase 1 < top_k.
+    Phase 3 (keyword): ILIKE supplement for specific terms that vector search
+                       may rank too low (e.g. exact section names like
+                       "Projektrollen"). Merged results are passed to Cohere
+                       reranker for final ordering.
 
-    This prevents global documents from diluting or displacing conversation-
-    specific chunks in the similarity ranking.
+    This prevents global documents from diluting conversation-specific results
+    AND ensures important keyword-matched chunks are always considered.
     """
     embeddings = await generate_embeddings([query])
     embedding = embeddings[0]
 
-    # Phase 1 — conversation-specific
+    # Phase 1 — conversation-specific (vector)
     conv_chunks = _rpc_chunks(embedding, user_id, chat_id, None, top_k, threshold)
-    if len(conv_chunks) >= top_k:
-        return conv_chunks
 
-    # Phase 2 — global supplement (chat_id=None → global-only via new SQL)
-    remaining = top_k - len(conv_chunks)
-    global_chunks = _rpc_chunks(embedding, user_id, None, None, remaining, threshold)
+    # Phase 2 — global supplement (vector)
+    vector_chunks = conv_chunks
+    if len(conv_chunks) < top_k:
+        remaining = top_k - len(conv_chunks)
+        global_chunks = _rpc_chunks(embedding, user_id, None, None, remaining, threshold)
+        seen_doc_ids = {c["document_id"] for c in conv_chunks}
+        global_chunks = [c for c in global_chunks if c["document_id"] not in seen_doc_ids]
+        vector_chunks = conv_chunks + global_chunks[:remaining]
 
-    # Deduplicate by document_id (shouldn't overlap, but be safe)
-    seen = {c["document_id"] for c in conv_chunks}
-    global_chunks = [c for c in global_chunks if c["document_id"] not in seen]
+    # Phase 3 — keyword supplement (ILIKE)
+    keywords = _extract_query_keywords(query)
+    if keywords:
+        seen_chunk_ids = {c.get("id") for c in vector_chunks}
+        kw_chunks = _keyword_supplement_chunks(
+            user_id=user_id,
+            chat_id=chat_id,
+            pool_id=None,
+            keywords=keywords,
+            limit=max(4, top_k),
+            exclude_ids=seen_chunk_ids,
+        )
+        if kw_chunks:
+            logger.info(
+                "Hybrid: keyword supplement added %d chunks for keywords %s",
+                len(kw_chunks),
+                keywords,
+            )
+            vector_chunks = vector_chunks + kw_chunks
 
-    return conv_chunks + global_chunks[:remaining]
+    return vector_chunks
 
 
 async def retrieve_chunks_with_strategy(
@@ -280,6 +420,25 @@ async def retrieve_chunks_with_strategy(
                 top_k=top_k,
                 threshold=threshold,
             )
+            # Keyword supplement for pool/global path
+            keywords = _extract_query_keywords(query)
+            if keywords:
+                seen_ids = {c.get("id") for c in chunks}
+                kw_chunks = _keyword_supplement_chunks(
+                    user_id=user_id,
+                    chat_id=None,
+                    pool_id=pool_id,
+                    keywords=keywords,
+                    limit=max(4, top_k),
+                    exclude_ids=seen_ids,
+                )
+                if kw_chunks:
+                    logger.info(
+                        "Hybrid pool: keyword supplement added %d chunks for keywords %s",
+                        len(kw_chunks),
+                        keywords,
+                    )
+                    chunks = chunks + kw_chunks
         logger.info(
             "RAG search: %d chunks found (chat_id=%s, pool_id=%s, threshold=%.2f)",
             len(chunks),
