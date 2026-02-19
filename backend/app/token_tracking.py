@@ -20,6 +20,9 @@ COST_PER_1M_TOKENS = {
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
     # Mistral
     "mistral-large-latest": {"input": 2.00, "output": 6.00},
+    # Mistral OCR — billed per page; "input tokens" = pages processed
+    # $1.00 per 1 000 pages = $1 000 per 1 M pages
+    "mistral-ocr-latest": {"input": 1000.0, "output": 0.00},
     # X.AI
     "grok-4": {"input": 3.00, "output": 15.00},
     # Embeddings

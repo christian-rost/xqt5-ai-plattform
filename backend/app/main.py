@@ -943,7 +943,9 @@ async def upload_document(
 
     # Extract text
     try:
-        extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(file.filename, file_bytes)
+        extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(
+            file.filename, file_bytes, user_id=current_user["id"]
+        )
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
 
@@ -1521,7 +1523,9 @@ async def upload_pool_document(
         raise HTTPException(status_code=400, detail=f"File exceeds {MAX_UPLOAD_SIZE_MB}MB limit")
 
     try:
-        extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(file.filename, file_bytes)
+        extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(
+            file.filename, file_bytes, user_id=current_user["id"]
+        )
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
 

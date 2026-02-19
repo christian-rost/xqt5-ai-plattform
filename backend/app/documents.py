@@ -50,15 +50,19 @@ async def extract_text(filename: str, file_bytes: bytes) -> str:
         raise ValueError(f"Unsupported file type: {filename}")
 
 
-async def extract_text_and_assets(filename: str, file_bytes: bytes) -> Tuple[str, List[Dict[str, Any]]]:
+async def extract_text_and_assets(
+    filename: str,
+    file_bytes: bytes,
+    user_id: Optional[str] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
     """Extract text and OCR-derived image assets from a file."""
     lower = filename.lower()
     if lower.endswith(".pdf"):
-        return await _ocr_pdf_mistral_with_assets(file_bytes, filename)
+        return await _ocr_pdf_mistral_with_assets(file_bytes, filename, user_id=user_id)
     if lower.endswith(".txt"):
         return file_bytes.decode("utf-8", errors="replace"), []
     if is_supported_image(lower):
-        text = await _ocr_image_mistral(file_bytes, filename, guess_image_mime(filename))
+        text = await _ocr_image_mistral(file_bytes, filename, guess_image_mime(filename), user_id=user_id)
         return text, []
     raise ValueError(f"Unsupported file type: {filename}")
 
@@ -69,7 +73,11 @@ async def _ocr_pdf_mistral(file_bytes: bytes, filename: str) -> str:
     return text
 
 
-async def _ocr_pdf_mistral_with_assets(file_bytes: bytes, filename: str) -> Tuple[str, List[Dict[str, Any]]]:
+async def _ocr_pdf_mistral_with_assets(
+    file_bytes: bytes,
+    filename: str,
+    user_id: Optional[str] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
     """Run OCR on a PDF via the Mistral OCR API and return text + image assets."""
     from . import providers as providers_mod
 
@@ -82,12 +90,18 @@ async def _ocr_pdf_mistral_with_assets(file_bytes: bytes, filename: str) -> Tupl
 
     b64 = base64.b64encode(file_bytes).decode("ascii")
     document_url = f"data:application/pdf;base64,{b64}"
-    return await _mistral_ocr_document_with_assets(api_key, document_url, filename, len(file_bytes))
+    return await _mistral_ocr_document_with_assets(api_key, document_url, filename, len(file_bytes), user_id=user_id)
 
 
-async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -> str:
+async def _ocr_image_mistral(
+    file_bytes: bytes,
+    filename: str,
+    mime_type: str,
+    user_id: Optional[str] = None,
+) -> str:
     """Run OCR / visual extraction on a single image via Mistral OCR API."""
     from . import providers as providers_mod
+    from .token_tracking import record_usage
 
     api_key = providers_mod.get_api_key("mistral")
     if not api_key:
@@ -107,7 +121,14 @@ async def _ocr_image_mistral(file_bytes: bytes, filename: str, mime_type: str) -
         _build_mistral_payload_image(image_url, as_object=True, include_structured=False, include_image_base64=False),
     ]
     data = await _mistral_ocr_with_fallbacks(api_key, payload_variants, filename, mode="image")
-    return _extract_text_from_mistral_response(data)
+    text = _extract_text_from_mistral_response(data)
+
+    if user_id:
+        # 1 image = 1 page
+        record_usage(user_id=user_id, chat_id=None, model="mistral-ocr-latest",
+                     provider="mistral", prompt_tokens=1, completion_tokens=0)
+
+    return text
 
 
 def _build_mistral_payload_document(
@@ -833,7 +854,10 @@ async def _mistral_ocr_document_with_assets(
     document_url: str,
     filename: str,
     byte_length: int,
+    user_id: Optional[str] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
+    from .token_tracking import record_usage
+
     logger.info("OCR via Mistral for %s (%d bytes)", filename, byte_length)
     payload_variants = [
         _build_mistral_payload_document(
@@ -862,7 +886,14 @@ async def _mistral_ocr_document_with_assets(
         ),
     ]
     data = await _mistral_ocr_with_fallbacks(api_key, payload_variants, filename, mode="document")
-    return _extract_text_and_assets_from_mistral_response(data)
+    text, assets = _extract_text_and_assets_from_mistral_response(data)
+
+    if user_id:
+        page_count = max(1, len(data.get("pages", []) or []))
+        record_usage(user_id=user_id, chat_id=None, model="mistral-ocr-latest",
+                     provider="mistral", prompt_tokens=page_count, completion_tokens=0)
+
+    return text, assets
 
 
 async def _mistral_ocr_document(api_key: str, document_url: str, filename: str, byte_length: int) -> str:
