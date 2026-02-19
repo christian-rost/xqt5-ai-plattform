@@ -375,9 +375,21 @@ async def retrieve_chunks_with_strategy(
     intent: str = "fact",
     rerank_settings: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """Adaptive retrieval with fallback passes for generic/summary prompts."""
+    """Adaptive retrieval with fallback passes for generic/summary prompts.
+
+    For conversation scope all documents are directly relevant, so we retrieve
+    up to 50 chunks with no similarity threshold. This guarantees completeness
+    even when specific section headings score poorly in vector space.
+    Cohere reranker then selects the best subset.
+
+    Pool/global scope uses threshold-filtered plans (may have many unrelated docs).
+    """
     plans: List[Tuple[int, float]]
-    if intent == "summary":
+
+    if chat_id is not None:
+        # Conversation: cast a wide net — retrieve all chunks, let Cohere rank
+        plans = [(50, 0.0)]
+    elif intent == "summary":
         plans = [
             (max(RAG_TOP_K, 8), max(RAG_SIMILARITY_THRESHOLD * 0.7, 0.08)),
             (max(RAG_TOP_K * 2, 12), 0.0),
@@ -390,7 +402,6 @@ async def retrieve_chunks_with_strategy(
 
     for top_k, threshold in plans:
         if chat_id is not None:
-            # Two-phase: conversation-first, global supplement
             chunks = await _search_chunks_hybrid(
                 query=query,
                 user_id=user_id,
@@ -450,9 +461,11 @@ async def _apply_optional_rerank(
     settings = rerank_settings or {}
     enabled = bool(settings.get("rerank_enabled", False))
     if not enabled or not chunks:
-        return chunks
+        # Without reranking, cap at a sensible limit (chunks are already
+        # sorted by vector similarity so the best ones come first).
+        return chunks[:max(RAG_TOP_K, 8)]
 
-    candidates = max(5, min(100, int(settings.get("rerank_candidates", 20))))
+    candidates = max(5, min(100, int(settings.get("rerank_candidates", 50))))
     top_n = max(1, min(30, int(settings.get("rerank_top_n", 6))))
     model = str(settings.get("rerank_model", "rerank-v3.5")).strip() or "rerank-v3.5"
     if top_n > candidates:
