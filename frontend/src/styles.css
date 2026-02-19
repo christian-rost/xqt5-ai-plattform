@@ -1437,25 +1437,25 @@ body {
 
 .sidebar-admin-btn {
   width: 100%;
-  padding: 10px;
-  background: #1b2d45;
-  color: #e2e8f0;
-  border: 1px solid #2a3f5f;
+  padding: 10px 16px;
+  background: #2d4263;
+  color: #ffffff;
+  border: 1px solid #3a5279;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  margin-bottom: 10px;
-  transition: background 0.2s;
+  margin-bottom: 8px;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .sidebar-admin-btn:hover {
-  background: #243654;
+  background: #3a5279;
 }
 
 .sidebar-admin-btn.active {
-  background: #243654;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 /* ── Provider Management ── */
