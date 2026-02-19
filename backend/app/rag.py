@@ -323,41 +323,28 @@ def _keyword_supplement_chunks(
     return supplement
 
 
-async def _search_chunks_two_phase(
+async def _search_chunks_hybrid(
     query: str,
     user_id: str,
     chat_id: str,
     top_k: int,
     threshold: float,
 ) -> List[Dict[str, Any]]:
-    """Hybrid two-phase chunk search for conversation scope.
+    """Hybrid chunk search for conversation scope.
 
     Phase 1 (vector): conversation-specific documents only.
-    Phase 2 (vector): supplement with global documents if Phase 1 < top_k.
-    Phase 3 (keyword): ILIKE supplement for specific terms that vector search
+    Phase 2 (keyword): ILIKE supplement for specific terms that vector search
                        may rank too low (e.g. exact section names like
                        "Projektrollen"). Merged results are passed to Cohere
                        reranker for final ordering.
-
-    This prevents global documents from diluting conversation-specific results
-    AND ensures important keyword-matched chunks are always considered.
     """
     embeddings = await generate_embeddings([query])
     embedding = embeddings[0]
 
     # Phase 1 — conversation-specific (vector)
-    conv_chunks = _rpc_chunks(embedding, user_id, chat_id, None, top_k, threshold)
+    vector_chunks = _rpc_chunks(embedding, user_id, chat_id, None, top_k, threshold)
 
-    # Phase 2 — global supplement (vector)
-    vector_chunks = conv_chunks
-    if len(conv_chunks) < top_k:
-        remaining = top_k - len(conv_chunks)
-        global_chunks = _rpc_chunks(embedding, user_id, None, None, remaining, threshold)
-        seen_doc_ids = {c["document_id"] for c in conv_chunks}
-        global_chunks = [c for c in global_chunks if c["document_id"] not in seen_doc_ids]
-        vector_chunks = conv_chunks + global_chunks[:remaining]
-
-    # Phase 3 — keyword supplement (ILIKE)
+    # Phase 2 — keyword supplement (ILIKE)
     keywords = _extract_query_keywords(query)
     if keywords:
         seen_chunk_ids = {c.get("id") for c in vector_chunks}
@@ -404,7 +391,7 @@ async def retrieve_chunks_with_strategy(
     for top_k, threshold in plans:
         if chat_id is not None:
             # Two-phase: conversation-first, global supplement
-            chunks = await _search_chunks_two_phase(
+            chunks = await _search_chunks_hybrid(
                 query=query,
                 user_id=user_id,
                 chat_id=chat_id,
