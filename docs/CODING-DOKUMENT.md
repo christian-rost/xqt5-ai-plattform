@@ -103,6 +103,30 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **Design-Entscheidung**: Pool-Chats sind separate Tabellen (`pool_chats`/`pool_chat_messages`), nicht die bestehenden `chats`/`chat_messages`, weil Pool-Chats Multi-User-Zugriff mit Username-Attribution brauchen.
 - **Berechtigungsmodell**: 4 Stufen — Viewer (lesen + fragen), Editor (+ Dokumente), Admin (+ Mitglieder), Owner (implizit, Pool löschen). Role-Check via `require_pool_role()`.
 
+### 2026-02-19 (RAG Bug-Fix — Conversations)
+
+- **Fehler: `match_chat_id = NULL` in SQL (PostgreSQL NULL-Semantik).**
+  Ursache: `_rpc_chunks()` sendete immer `"match_chat_id": chat_id`, auch wenn `chat_id=None`. PostgreSQL evaluiert `d.chat_id = NULL` zu UNKNOWN (nicht TRUE) → keine Conversation-Dokumente gefunden.
+  Korrektur: Parameter nur inkludieren wenn `is not None` (analog zu `match_pool_id`). **Regel: Nullable RPC-Parameter nie als `null` senden — ganz weglassen wenn nicht relevant.**
+
+- **Fehler: PGRST203 — Function Overload Ambiguity nach SQL-Migrationen.**
+  Ursache: `CREATE OR REPLACE FUNCTION` mit geänderten Parametern erstellt eine **neue Überladung**, ersetzt die alte nicht. PostgREST konnte bei Aufruf ohne `match_pool_id` nicht zwischen der alten 5-Parameter-Version und der neuen 6-Parameter-Version (`match_pool_id DEFAULT NULL`) unterscheiden → Exception bei allen Conversation-RAG-Anfragen.
+  Korrektur: Migration `20260219_drop_old_function_overloads.sql` droppt die alte Signatur explizit vor der neuen Erstellung. **Regel: Bei Parameteränderungen an SQL-Funktionen immer `DROP FUNCTION IF EXISTS old_signature` vor dem neuen `CREATE OR REPLACE`.**
+
+- **Fehler: RAG-Injection Exception verhinderte Text-Fallback.**
+  Ursache: Der gesamte RAG-Block (Vector-Suche + Context-Injection + Text-Fallback) lag in einem `try/except`. Eine Exception in der Vector-Suche verhinderte auch den Text-Fallback.
+  Korrektur: Vector-Suche und Context-Injection in separate `try/except`-Blöcke aufgeteilt. Text-Fallback läuft jetzt unabhängig von der Vector-Suche.
+
+- **Fehler: RAG_TOP_K=5 + threshold=0.3 verfehlte semantisch schwach rankende Kapitel.**
+  Ursache: Listenbasierte Kapitel (z.B. "Projektrollen") haben niedrige Kosinus-Ähnlichkeit zu Fragebogen-Queries obwohl direkt relevant. Mit nur 5 Chunks wurden solche Kapitel nie geliefert.
+  Korrektur: Conversations nutzen jetzt `top_k=50, threshold=0.0` — alle Chunks werden nach Ähnlichkeit sortiert, dann in Dokumentreihenfolge (`chunk_index`) ans LLM übergeben. Cohere Reranker (optional) selektiert beste Chunks aus dem breiten Kandidatenset.
+
+- **Design-Entscheidung: Keine globalen Dokumente.**
+  Da es keine globalen Dokumente gibt, wurde Phase 2 (globales Supplement) aus `_search_chunks_two_phase()` entfernt. Funktion umbenannt zu `_search_chunks_hybrid()`.
+
+- **Hybrid Search: Vector + Keyword ILIKE.**
+  Keyword-Supplement via `_keyword_supplement_chunks()` stellt sicher, dass Chunks mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen. Stopwörter (DE+EN) werden gefiltert, min. 4 Zeichen. Keyword-Chunks werden vor Cohere-Reranking angehängt.
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).
@@ -117,3 +141,5 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 6. **Bei neuen Tabellen: kein Copy-Paste aus altem Storage-Code** ohne Feldprüfung.
 7. **Azure-Modelle immer mit `deployment_name` in `app_model_config` anlegen.**
 8. **Token-Invalidierung**: Bei sicherheitskritischen User-Änderungen (Deaktivierung, Passwort-Reset) immer `bump_token_version()` aufrufen, damit alle bestehenden Tokens sofort ungültig werden.
+9. **SQL-Funktionsänderungen**: Bei Parameteränderungen immer `DROP FUNCTION IF EXISTS old_signature` vor `CREATE OR REPLACE`. Sonst PGRST203 Function Overload Ambiguity.
+10. **Nullable RPC-Parameter**: Nie als `null` senden — komplett weglassen wenn nicht relevant (PostgreSQL `col = NULL` → UNKNOWN, nicht TRUE).

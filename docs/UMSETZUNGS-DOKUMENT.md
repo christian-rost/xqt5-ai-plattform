@@ -371,6 +371,32 @@
 - `pool_chats`/`pool_chat_messages` sind separate Tabellen (nicht `chats`/`chat_messages`), weil Pool-Chats Multi-User-Zugriff brauchen
 - Owner ist NICHT in `pool_members` — Ownership implizit über `pool_pools.owner_id`
 
+### Phase RAGPools: RAG-Qualität für Conversations + Pools (2026-02-19)
+
+#### Migrations
+- `supabase/migrations/20260219_phase_f_multimodal_assets.sql` — `app_document_assets` Tabelle für Bild-RAG
+- `supabase/migrations/20260220_runtime_rag_settings.sql` — Admin-konfigurierbare RAG-Einstellungen (Cohere Reranking)
+- `supabase/migrations/20260221_rag_scoped_search.sql` — Scope-isolierte `match_document_chunks`/`match_document_assets`: conversation-only, pool-only, global-only (kein `OR d.chat_id IS NULL` mehr)
+- `supabase/migrations/20260219_drop_old_function_overloads.sql` — Droppt alte 5-Parameter-Versionen der RPCs (behebt PGRST203)
+
+#### Backend `rag.py`
+- **`_rpc_chunks()`** / **`_rpc_assets()`**: Wrapper die pre-computed Embeddings wiederverwenden; Parameter nur inkludiert wenn `is not None`
+- **`_search_chunks_hybrid()`** (ehem. `_search_chunks_two_phase`): Phase 1 Vektor (Conversation), Phase 2 Keyword ILIKE-Supplement
+- **`_extract_query_keywords()`**: Stopwort-Filterung (DE+EN), min. 4 Zeichen, max. 3 Keywords
+- **`_keyword_supplement_chunks()`**: Scope-aware ILIKE-Suche in `app_document_chunks`, enriched mit filename
+- **`retrieve_chunks_with_strategy()`**: Conversations nutzen `top_k=50, threshold=0.0` (alle Chunks, kein Filter), Pools nutzen threshold-gefilterte Pläne; ohne Cohere werden alle Chunks in Dokumentreihenfolge zurückgegeben
+- **`_apply_optional_rerank()`**: Ohne Cohere → Dokumentreihenfolge (`document_id, chunk_index`), alle Chunks; mit Cohere → `rerank_candidates=50` (Default erhöht von 20)
+- **Cohere Reranking** (`_cohere_rerank()`): Optional via Admin-konfigurierbares `rerank_enabled`, `rerank_model`, `rerank_candidates`, `rerank_top_n`
+
+#### Backend `main.py`
+- RAG-Injection für `send_message` und `send_pool_message` in separate `try/except`-Blöcke aufgeteilt: Vector-Suche, Context-Injection, Text-Fallback sind unabhängig voneinander
+- `exc_info=True` bei allen RAG-Exception-Logs für vollständige Stack-Traces
+
+#### Design-Entscheidungen
+- **Keine globalen Dokumente**: Phase 2 (globales Supplement) entfernt — vereinfacht Code, spart DB-Abfrage
+- **Conversations: Wide-Net-Retrieval**: Statt threshold-Filterung alle verfügbaren Chunks abrufen und in Dokumentreihenfolge sortieren; relevanter für Einzeldokument-Conversations
+- **Hybrid Search**: ILIKE-Supplement garantiert dass Kapitel mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen
+
 ## Nächste Umsetzungsschritte
 1. **Workflow-Engine** für automatisierte Abläufe
 2. **SSO** (OIDC/SAML)
