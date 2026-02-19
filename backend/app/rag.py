@@ -461,14 +461,13 @@ async def _apply_optional_rerank(
     settings = rerank_settings or {}
     enabled = bool(settings.get("rerank_enabled", False))
     if not enabled or not chunks:
-        # Without reranking, return chunks in document order so the LLM reads
-        # the document sequentially and no section is skipped due to poor
-        # vector similarity. Cap at 15 chunks to stay within context limits.
-        ordered = sorted(
+        # Without reranking, return all chunks in document order so the LLM
+        # reads the document sequentially and no section is skipped. The count
+        # is already bounded upstream (conversation: top_k=50, pool: top_k=5).
+        return sorted(
             chunks,
             key=lambda c: (c.get("document_id", ""), c.get("chunk_index", 0)),
         )
-        return ordered[:max(RAG_TOP_K * 3, 15)]
 
     candidates = max(5, min(100, int(settings.get("rerank_candidates", 50))))
     top_n = max(1, min(30, int(settings.get("rerank_top_n", 6))))
