@@ -1500,6 +1500,19 @@ async def list_pool_documents(
     return pools_mod.list_pool_documents(pool_id)
 
 
+@app.get("/api/pools/{pool_id}/documents/{document_id}/preview", response_model=None)
+async def get_pool_document_preview(
+    pool_id: str,
+    document_id: str,
+    current_user: Dict = Depends(get_current_user),
+):
+    pools_mod.require_pool_role(pool_id, current_user["id"], "viewer")
+    preview = pools_mod.get_pool_document_preview(pool_id, document_id)
+    if not preview:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return preview
+
+
 @app.post("/api/pools/{pool_id}/documents/upload", response_model=None)
 @limiter.limit("20/minute")
 async def upload_pool_document(

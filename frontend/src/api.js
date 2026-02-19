@@ -568,6 +568,15 @@ export const api = {
     return response.json()
   },
 
+  async getPoolDocumentPreview(poolId, documentId) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/${documentId}/preview`)
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Konnte Vorschau nicht laden')
+    }
+    return response.json()
+  },
+
   async uploadPoolDocument(poolId, file) {
     const formData = new FormData()
     formData.append('file', file)

@@ -332,6 +332,50 @@ def list_pool_documents(pool_id: str) -> List[Dict[str, Any]]:
     return result.data or []
 
 
+def get_pool_document_preview(pool_id: str, document_id: str) -> Optional[Dict[str, Any]]:
+    doc_result = (
+        supabase.table("app_documents")
+        .select("id,filename,file_type,status,extracted_text")
+        .eq("id", document_id)
+        .eq("pool_id", pool_id)
+        .limit(1)
+        .execute()
+    )
+    if not doc_result.data:
+        return None
+
+    doc = doc_result.data[0]
+    extracted_text = str(doc.get("extracted_text") or "")
+    max_chars = 20000
+    text_preview = extracted_text[:max_chars]
+
+    preview: Dict[str, Any] = {
+        "id": doc["id"],
+        "filename": doc.get("filename"),
+        "file_type": doc.get("file_type"),
+        "status": doc.get("status"),
+        "text_preview": text_preview,
+        "text_length": len(extracted_text),
+        "truncated": len(extracted_text) > max_chars,
+    }
+
+    if doc.get("file_type") == "image":
+        try:
+            asset_result = (
+                supabase.table("app_document_assets")
+                .select("storage_path")
+                .eq("document_id", document_id)
+                .limit(1)
+                .execute()
+            )
+            if asset_result.data:
+                preview["image_data_url"] = asset_result.data[0].get("storage_path")
+        except Exception as e:
+            logger.info("Image preview asset lookup failed for %s: %s", document_id, e)
+
+    return preview
+
+
 def has_ready_pool_documents(pool_id: str) -> bool:
     result = (
         supabase.table("app_documents")

@@ -247,6 +247,7 @@ export default function PoolDetail({
       <div className="pool-content">
         {activeTab === 'documents' && (
           <PoolDocuments
+            poolId={pool.id}
             documents={documents}
             canEdit={canEdit}
             onUpload={handleUploadDocument}
