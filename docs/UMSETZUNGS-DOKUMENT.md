@@ -349,7 +349,7 @@
    - Pool CRUD: POST/GET/PATCH/DELETE `/api/pools`
    - Members: GET/POST/PATCH/DELETE `/api/pools/{pool_id}/members`
    - Invites: GET/POST/DELETE `/api/pools/{pool_id}/invites`, POST `/api/pools/join`
-   - Documents: GET/POST/DELETE `/api/pools/{pool_id}/documents` + GET `/api/pools/{pool_id}/documents/{document_id}/preview`
+   - Documents: GET/DELETE `/api/pools/{pool_id}/documents` + POST `/api/pools/{pool_id}/documents` (Datei-Upload) + POST `/api/pools/{pool_id}/documents/text` (Text-Paste) + GET `/api/pools/{pool_id}/documents/{document_id}/preview`
    - Chats: GET/POST/DELETE `/api/pools/{pool_id}/chats`, POST `/api/pools/{pool_id}/chats/{chat_id}/message`
 
 #### Frontend
@@ -366,16 +366,26 @@
 7. **App.jsx Änderungen**: Neuer State (pools, activePool, activePoolView, activePoolChat), mutually exclusive mit activeConversation
 8. **Sidebar.jsx**: PoolList-Integration
 
-#### Phase E Update (2026-02-19): Dokumentvorschau im Pool
+#### Phase E Update (2026-02-21): Pool Text Paste Input
 9. **Neuer Endpoint** (`main.py`):
-   - `GET /api/pools/{pool_id}/documents/{document_id}/preview`
-   - Zugriff für alle Pool-Mitglieder (ab Rolle `viewer`)
-10. **Preview-Logik** (`pools.py`):
-   - Liefert `text_preview`, `text_length`, `truncated` für Dokumente
-   - Liefert bei Bild-Dokumenten optional `image_data_url` aus `app_document_assets`
-11. **Frontend-UX** (`PoolDocuments.jsx` + `styles.css`):
-   - Vorschau-Button pro Dokument
-   - Modal mit Textvorschau (gekürzt) und optionaler Bildansicht
+   - `POST /api/pools/{pool_id}/documents/text` — Text direkt als RAG-Dokument einfügen
+   - Pydantic-Model: `UploadPoolTextRequest` (title: str, content: str)
+   - Mindestrolle: `editor`; Rate Limit: 20/minute
+   - Text wird intern als TXT-Datei verpackt und durch die bestehende `process_document()`-Pipeline geführt (Chunking + Embedding)
+10. **Frontend** (`PoolDocuments.jsx`):
+    - Neues "Text einfügen"-Tab neben dem Datei-Upload
+    - Textarea für Titel und Inhalt, Submit über denselben API-Client wie Datei-Upload
+
+#### Phase E Update (2026-02-19): Dokumentvorschau im Pool
+11. **Neuer Endpoint** (`main.py`):
+    - `GET /api/pools/{pool_id}/documents/{document_id}/preview`
+    - Zugriff für alle Pool-Mitglieder (ab Rolle `viewer`)
+12. **Preview-Logik** (`pools.py`):
+    - Liefert `text_preview`, `text_length`, `truncated` für Dokumente
+    - Liefert bei Bild-Dokumenten optional `image_data_url` aus `app_document_assets`
+13. **Frontend-UX** (`PoolDocuments.jsx` + `styles.css`):
+    - Vorschau-Button pro Dokument
+    - Modal mit Textvorschau (gekürzt) und optionaler Bildansicht
 
 #### Design-Entscheidungen
 - `app_documents` wird wiederverwendet (statt eigener pool_documents), weil `app_document_chunks` per FK darauf verweist — hält Embedding-Pipeline unverändert
@@ -402,6 +412,10 @@
 #### Backend `main.py`
 - RAG-Injection für `send_message` und `send_pool_message` in separate `try/except`-Blöcke aufgeteilt: Vector-Suche, Context-Injection, Text-Fallback sind unabhängig voneinander
 - `exc_info=True` bei allen RAG-Exception-Logs für vollständige Stack-Traces
+- **Admin RAG-Settings Endpoints** (beide `Depends(get_current_admin)`):
+  - `GET /api/admin/rag-settings` — Liest aktuelle RAG-Konfiguration aus `app_rag_settings` (Cohere-Keys: `rerank_enabled`, `rerank_model`, `rerank_candidates`, `rerank_top_n`)
+  - `PATCH /api/admin/rag-settings` — Aktualisiert RAG-Einstellungen; Pydantic-Model: `UpdateRagSettingsRequest`
+  - Über das Admin-Dashboard (Provider-Tab) verwaltbar; ermöglicht Cohere Reranking ohne Neudeployment
 
 #### Design-Entscheidungen
 - **Globale Dokumente weiterhin API-seitig vorhanden**: Scope `chat_id IS NULL` wird weiterhin unterstützt (z. B. in Dokumentlisten/Fallback-Pfaden); Haupt-UI-Fluss bleibt chat- und pool-zentriert

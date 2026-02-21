@@ -78,6 +78,9 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **API-Key**: Via `providers.get_api_key("mistral")` (DB mit Env-Fallback). Ohne Key gibt es eine klare Fehlermeldung.
 - **Keine System-Pakete**: Kein Tesseract/Poppler im Docker nötig — rein API-basiert.
 - **Timeout**: 120s für große PDFs (httpx AsyncClient).
+- **Env-Vars für OCR-Verhalten** (beide in `config.py`, Default `true`):
+  - `MISTRAL_OCR_STRUCTURED` — Wenn `true`, wird die Mistral-OCR-API im strukturierten Modus aufgerufen (JSON-Output mit Seiten + Text). Auf `false` setzen für reinen Markdown-Output.
+  - `MISTRAL_OCR_INCLUDE_IMAGE_BASE64` — Wenn `true`, werden extrahierte Seitenbilder als base64 mitgeliefert und in `app_document_assets` gespeichert (für Bild-RAG). Auf `false` setzen um Speicher/Bandbreite zu sparen.
 
 ### 2026-02-17 (Admin User Löschen + Default-Modell Fix)
 - **Admin User Soft-Delete**: Neuer `DELETE /api/admin/users/{user_id}` Endpoint. Setzt `is_active=false` und ruft `bump_token_version()` auf. Selbstschutz: Admin kann sich nicht selbst löschen (400). Frontend: Löschen-Button pro Zeile, deaktiviert für eigenen User, `confirm()` Dialog.
@@ -133,6 +136,13 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **Berechtigung:** Vorschau ist ab Rolle `viewer` verfügbar (`require_pool_role(..., "viewer")`).
 - **Robustheit:** Asset-Lookup für Bildvorschau ist defensiv implementiert (Fehler beim Lookup brechen die Vorschau nicht komplett ab).
 - **Frontend:** `PoolDocuments.jsx` hat einen `Vorschau`-Button pro Dokument plus Modal für Text-/Bildansicht; lange Texte werden gekürzt dargestellt (`truncated`, `text_length`).
+
+### 2026-02-21 (RAGtext — Pool Text Paste Input)
+- **Feature: Text direkt als RAG-Dokument in Pools einfügen.**
+  Neuer Endpoint `POST /api/pools/{pool_id}/documents/text` nimmt `title` + `content` entgegen, konvertiert den Text in eine temporäre TXT-Datei und führt ihn durch dieselbe RAG-Pipeline (Chunking + Embedding) wie dateibasierte Uploads.
+- **Pydantic-Model:** `UploadPoolTextRequest` (title: str, content: str).
+- **Berechtigung:** Mindestrolle `editor`; Rate Limit 20/min analog zu `/documents/upload`.
+- **Design-Entscheidung:** Kein separater Code-Pfad — Text wird mit `SpooledTemporaryFile` als `UploadFile` verpackt und über die vorhandene `process_document()`-Pipeline verarbeitet.
 
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
