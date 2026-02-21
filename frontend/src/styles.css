@@ -52,6 +52,65 @@ body {
   padding: 16px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* Flex container holding pools panel + divider + conversations panel */
+.sidebar-panels {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Pool section panel — height controlled by splitPct inline style */
+.sidebar-pool-panel {
+  overflow-y: auto;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+/* Conversations section panel — takes remaining space */
+.sidebar-conv-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Draggable divider between pools and conversations */
+.sidebar-drag-divider {
+  flex-shrink: 0;
+  height: 8px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2px -16px; /* extend to sidebar edges */
+  padding: 0 16px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.sidebar-drag-divider:hover,
+.sidebar-drag-divider:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-drag-handle {
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-gray);
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.sidebar-drag-divider:hover .sidebar-drag-handle,
+.sidebar-drag-divider:active .sidebar-drag-handle {
+  opacity: 0.8;
 }
 
 .sidebar h1 {
@@ -85,6 +144,7 @@ body {
 .conversation-list {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .no-conversations {
@@ -1725,9 +1785,8 @@ body {
 /* ── Pool List (Sidebar) ── */
 
 .pool-list-section {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 4px;
+  padding-bottom: 4px;
 }
 
 .pool-list-header {
