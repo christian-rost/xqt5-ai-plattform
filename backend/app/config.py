@@ -31,8 +31,10 @@ RATE_LIMIT_STORAGE_URL = os.getenv("RATE_LIMIT_STORAGE_URL", "memory://")
 # RAG / Embedding settings
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1500"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
+# CHUNK_SIZE and CHUNK_OVERLAP are measured in TOKENS (not characters) since RAGplus.
+# 512 tokens ≈ 350–400 words; well within text-embedding-3-small's 8192-token limit.
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 RAG_SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))

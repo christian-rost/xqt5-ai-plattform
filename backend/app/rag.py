@@ -19,6 +19,219 @@ from .token_tracking import record_usage
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Chunking — Markdown-section-aware, token-based (Ansatz A + B)
+# ---------------------------------------------------------------------------
+
+# Matches markdown headings: "## Title", "### 1.1 Subsection", etc.
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
+
+# Bullet / numbered list items (treated as atomic units, never split mid-item)
+_BULLET_RE = re.compile(r"^\s*[-*•]\s+|^\s*\d+[.)]\s+")
+
+# Sentence boundary: ./?/! followed by space + uppercase or digit.
+# Deliberately simple — overlaps prevent hard boundary errors.
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ\d\"])")
+
+# Module-level tiktoken encoder (lazy-loaded once, then cached)
+_encoder = None
+
+
+def _get_encoder():
+    """Lazy-load and cache the cl100k_base tiktoken encoder."""
+    global _encoder
+    if _encoder is None:
+        import tiktoken  # noqa: PLC0415
+        _encoder = tiktoken.get_encoding("cl100k_base")
+    return _encoder
+
+
+def _tok(text: str) -> int:
+    """Return the token count of *text* using the cl100k_base tokenizer."""
+    return len(_get_encoder().encode(text))
+
+
+def _breadcrumb(stack: List[Tuple[int, str]]) -> str:
+    """Format a heading stack as a human-readable breadcrumb prefix.
+
+    Example: [(2, "3. Projektrollen"), (3, "3.1 Projektleiter")]
+          -> "## 3. Projektrollen > ### 3.1 Projektleiter"
+    """
+    return " > ".join(f"{'#' * lvl} {txt}" for lvl, txt in stack)
+
+
+def _split_into_units(text: str) -> List[str]:
+    """Break prose into small atomic units for fine-grained chunk assembly.
+
+    Rules (in order):
+    1. Empty lines → preserved as empty strings (paragraph breaks).
+    2. Bullet / numbered list items → one unit each.
+    3. All other lines → sentence-split via _SENT_SPLIT_RE.
+    """
+    units: List[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            units.append("")
+            continue
+        if _BULLET_RE.match(stripped):
+            units.append(line)
+        else:
+            parts = _SENT_SPLIT_RE.split(line)
+            units.extend(parts)
+    return units
+
+
+def _overlap_tail(units: List[str], overlap_tokens: int) -> List[str]:
+    """Return the trailing units that fit within *overlap_tokens*."""
+    tail: List[str] = []
+    budget = overlap_tokens
+    for unit in reversed(units):
+        cost = _tok(unit) + 1  # +1 for the joining newline
+        if cost > budget:
+            break
+        tail.insert(0, unit)
+        budget -= cost
+    return tail
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP,
+) -> List[str]:
+    """Markdown-section-aware chunker with token-based sizing and header injection.
+
+    Improvements over the previous character-based chunker:
+
+    A) **Markdown-section-aware**: The input text (Mistral OCR markdown) is split
+       at heading boundaries (``#`` … ``######``).  Each section keeps its own
+       heading stack so the embedding model always sees the structural context.
+
+    B) **Header injection**: Every chunk is prefixed with a breadcrumb derived
+       from the active heading stack, e.g.::
+
+           ## 3. Projektrollen > ### 3.1 Projektleiter
+
+           Der Projektleiter ist verantwortlich für…
+
+       This ensures that retrieval for "Wer ist Projektleiter?" finds the right
+       section even when the heading itself is not in the retrieved chunk.
+
+    C) **Token-based sizing**: ``chunk_size`` and ``overlap`` are now measured in
+       *tokens* (tiktoken cl100k_base, same family as text-embedding-3-small),
+       not characters.  Default: 512 tokens / 50 tokens overlap.
+
+    D) **Sentence-boundary respect**: When a section must be split, the chunker
+       tries to break at sentence endings or bullet-item boundaries rather than
+       at arbitrary character positions.
+    """
+    if not text or not text.strip():
+        return []
+
+    # ------------------------------------------------------------------
+    # Step 1 — Parse into sections at heading boundaries
+    # ------------------------------------------------------------------
+    # Each section: (heading_stack, content_lines)
+    sections: List[Tuple[List[Tuple[int, str]], List[str]]] = []
+    heading_stack: List[Tuple[int, str]] = []
+    current_lines: List[str] = []
+
+    for raw_line in text.split("\n"):
+        m = _HEADING_RE.match(raw_line)
+        if m:
+            # Flush previous section only when it has actual text content.
+            # Empty sections (heading followed immediately by another heading)
+            # are skipped — the parent heading is carried in the breadcrumb of
+            # the child section via heading_stack.
+            if any(line.strip() for line in current_lines):
+                sections.append((list(heading_stack), list(current_lines)))
+            current_lines = []
+            level = len(m.group(1))
+            title = m.group(2).strip()
+            # Pop headings at the same or deeper level, then push new heading
+            heading_stack = [(lvl, txt) for lvl, txt in heading_stack if lvl < level]
+            heading_stack.append((level, title))
+        else:
+            current_lines.append(raw_line)
+
+    # Flush last section
+    if current_lines:
+        sections.append((list(heading_stack), list(current_lines)))
+
+    # ------------------------------------------------------------------
+    # Step 2 — Convert sections to chunks
+    # ------------------------------------------------------------------
+    chunks: List[str] = []
+
+    for h_stack, lines in sections:
+        bc = _breadcrumb(h_stack)
+        content = "\n".join(lines).strip()
+
+        if not content and not bc:
+            continue
+
+        prefix = f"{bc}\n\n" if bc else ""
+        prefix_tokens = _tok(prefix) if prefix else 0
+        full_text = f"{prefix}{content}" if content else bc
+
+        # Happy path: entire section fits in one chunk
+        if _tok(full_text) <= chunk_size:
+            chunks.append(full_text)
+            continue
+
+        # Section too large — split at unit boundaries
+        units = _split_into_units(content)
+        buf: List[str] = []
+        buf_tokens = prefix_tokens
+
+        for unit in units:
+            unit_tokens = _tok(unit) + 1  # +1 for joining newline
+
+            # Edge case: single unit exceeds budget → hard token-split
+            if unit_tokens > chunk_size - prefix_tokens:
+                if buf:
+                    chunks.append(f"{prefix}{chr(10).join(buf).strip()}")
+                    buf = _overlap_tail(buf, overlap)
+                    buf_tokens = prefix_tokens + sum(_tok(u) + 1 for u in buf)
+
+                enc = _get_encoder()
+                encoded = enc.encode(unit)
+                budget = chunk_size - prefix_tokens
+                while encoded:
+                    slice_enc = encoded[:budget]
+                    encoded = encoded[max(0, budget - overlap):]
+                    decoded = enc.decode(slice_enc)
+                    chunks.append(f"{prefix}{decoded}")
+                    if len(encoded) <= overlap:
+                        break
+                buf = []
+                buf_tokens = prefix_tokens
+                continue
+
+            # Normal case: flush buffer when it would overflow
+            if buf_tokens + unit_tokens > chunk_size and buf:
+                chunks.append(f"{prefix}{chr(10).join(buf).strip()}")
+                buf = _overlap_tail(buf, overlap)
+                buf_tokens = prefix_tokens + sum(_tok(u) + 1 for u in buf)
+
+            if unit.strip():  # skip empty lines after a flush
+                buf.append(unit)
+                buf_tokens += unit_tokens
+
+        # Flush remaining buffer
+        if buf:
+            tail = "\n".join(buf).strip()
+            if tail:
+                chunks.append(f"{prefix}{tail}")
+
+    return [c for c in chunks if c.strip()]
+
+
+# ---------------------------------------------------------------------------
+# End of chunking helpers
+# ---------------------------------------------------------------------------
+
 IMAGE_QUERY_KEYWORDS = {
     "image", "images", "picture", "pictures", "photo", "photos", "figure", "figures",
     "chart", "charts", "graph", "graphs", "diagram", "diagrams", "screenshot", "screenshots",
@@ -152,8 +365,8 @@ async def generate_embeddings(texts: List[str]) -> List[List[float]]:
 
 
 def _estimate_tokens(text: str) -> int:
-    """Rough token estimate: ~4 chars per token."""
-    return max(1, len(text) // 4)
+    """Exact token count via tiktoken (cl100k_base)."""
+    return max(1, _tok(text))
 
 
 async def process_document(document_id: str, text: str, user_id: str) -> Tuple[int, int]:
