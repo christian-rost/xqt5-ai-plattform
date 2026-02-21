@@ -1,6 +1,6 @@
 # Anwender Quickstart
 
-Stand: 19.02.2026  
+Stand: 22.02.2026
 Produkt: **XQT5 AI Plattform**
 
 ## 1. Ziel in 5 Minuten
@@ -43,8 +43,9 @@ flowchart LR
 ### Schritt 3: Dokument hinzufuegen (RAG)
 
 1. Lade eine Datei hoch (`.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`).
-2. Warte bis der Status verarbeitet ist.
-3. Stelle dann eine konkrete Frage zum Inhalt.
+2. Ein Fortschrittsbalken zeigt den Upload-Status an (zuerst Datei-Transfer, dann OCR-Verarbeitung).
+3. Warte bis der Status "ready" angezeigt wird.
+4. Stelle dann eine konkrete Frage zum Inhalt.
 
 Beispiel:
 - "Fasse Kapitel 3 in 5 Stichpunkten zusammen."
@@ -88,9 +89,12 @@ flowchart TD
 
 Pool-Rollen:
 - Viewer: lesen + fragen
-- Editor: zusaetzlich Dokumente verwalten
+- Editor: zusaetzlich Dokumente verwalten (Datei-Upload oder Text einfuegen)
 - Admin: zusaetzlich Mitglieder/Einladungen verwalten
 - Owner: Pool-Besitzer
+
+Tipp: Statt eine Datei hochzuladen kannst du im Pool-Dokumenttab auch direkt Text einfuegen
+("Text einfuegen"-Button). Der Text wird genauso verarbeitet wie eine hochgeladene Datei.
 
 PoolsViewer (aktueller Stand):
 1. Oeffne im Pool den Tab "Dokumente".

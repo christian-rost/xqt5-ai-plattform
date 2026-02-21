@@ -1,6 +1,6 @@
 # Anwender-Dokumentation
 
-Stand: 19.02.2026  
+Stand: 22.02.2026
 Produkt: **XQT5 AI Plattform**
 
 ## 1. Ziel der Anwendung
@@ -90,15 +90,17 @@ graph LR
   - PDF via Mistral OCR
   - Bilder via Mistral OCR
   - TXT via UTF-8-Textimport
-- Inhalt wird gechunkt, mit Embeddings indexiert und bei passenden Fragen als Kontext zugespielt
+- Inhalt wird gechunkt (abschnittsweise mit Kontext-Header), mit Embeddings indexiert und bei passenden Fragen als Kontext zugespielt
+- Hybrid-Suche: Vektorsuche und Volltextsuche (BM25) werden kombiniert für bessere Treffsicherheit
+- **Fortschrittsanzeige beim Hochladen**: Ein Fortschrittsbalken zeigt den Upload-Status an (Datei übertragen → Verarbeitung durch OCR)
 - Quellenhinweise werden bei Antworten angezeigt
 
 ```mermaid
 flowchart TD
-    A["Datei hochladen"] --> B["Text extrahieren"]
-    B --> C["Chunks bilden"]
+    A["Datei hochladen"] --> B["Text extrahieren (OCR)"]
+    B --> C["Abschnitte & Chunks bilden"]
     C --> D["Embeddings erzeugen"]
-    D --> E["Vektorsuche (Similarity)"]
+    D --> E["Hybrid-Suche (Vektor + BM25)"]
     E --> F["Kontext in Prompt einfügen"]
     F --> G["Antwort mit Quellenhinweisen"]
 ```
@@ -108,7 +110,7 @@ flowchart TD
 - Pool erstellen (Name, Beschreibung, Icon, Farbe)
 - Mitglieder per Username hinzufügen
 - Invite-Links mit Rolle, Ablaufdatum, Nutzungslimit
-- Dokumente poolweit teilen
+- Dokumente poolweit teilen — per **Datei-Upload** oder **Text direkt einfügen** ("Text einfügen"-Button)
 - Dokumentvorschau direkt im Pool (Textvorschau, bei Bildern inkl. Bildansicht)
 - Zwei Chat-Typen:
   - **Shared Chat**: für alle Mitglieder sichtbar
@@ -139,6 +141,7 @@ flowchart LR
 - Modellkatalog (aktiv/deaktiviert, Default-Modell)
 - Provider-Keys speichern, testen, entfernen
 - Audit-Logs für Nachvollziehbarkeit
+- **Dokumente neu chunken**: Alle hochgeladenen Dokumente mit aktueller Chunking-Strategie neu verarbeiten (Retrieval-Tab im Admin-Dashboard)
 
 ## 5. Typische Arbeitsabläufe
 
@@ -185,8 +188,11 @@ Umgesetzt:
 - Assistenten und Templates
 - Dokument-Upload + RAG + Quellenhinweise
 - Admin-Dashboard mit Audit/Provider/Modellen
-- Pools mit Rollen, Invite-Links, Shared/Private Chats
+- Pools mit Rollen, Invite-Links, Shared/Private Chats, Text-Einfügen
 - Pool-Dokumentvorschau (Text/Bild) im Dokument-Tab
+- Verbesserte RAG-Suche: abschnittsbasiertes Chunking mit Kontext-Headern, Hybrid-Suche (Vektor + BM25)
+- Upload-Fortschrittsbalken (Datei-Transfer + OCR-Verarbeitung)
+- Sidebar: anpassbare Aufteilung zwischen Pools und Konversationen (Drag-to-Resize)
 
 Noch geplant:
 
