@@ -805,6 +805,50 @@ async def search_similar_assets(
         return []
 
 
+async def rechunk_all_documents() -> Dict[str, int]:
+    """Re-chunk all existing documents with the current chunker.
+
+    Deletes old chunks from app_document_chunks and re-runs process_document()
+    for every document that has extracted_text. Does NOT re-run OCR.
+
+    Returns a dict with processed / failed / skipped / total counts.
+    """
+    result = (
+        supabase.table("app_documents")
+        .select("id, user_id, filename, extracted_text")
+        .not_.is_("extracted_text", "null")
+        .neq("extracted_text", "")
+        .execute()
+    )
+    docs = result.data or []
+    processed = 0
+    failed = 0
+    skipped = 0
+
+    for doc in docs:
+        doc_id = doc["id"]
+        text = (doc.get("extracted_text") or "").strip()
+        user_id = doc["user_id"]
+        filename = doc.get("filename", doc_id)
+
+        if not text:
+            skipped += 1
+            continue
+
+        try:
+            supabase.table("app_document_chunks").delete().eq("document_id", doc_id).execute()
+            documents_mod.update_document_status(doc_id, "processing")
+            await process_document(doc_id, text, user_id)
+            processed += 1
+            logger.info("Re-chunked: %s (%s)", filename, doc_id)
+        except Exception as e:
+            logger.error("Re-chunk failed for %s (%s): %s", filename, doc_id, e, exc_info=True)
+            documents_mod.update_document_status(doc_id, "error", error_message=f"Re-chunk: {e}")
+            failed += 1
+
+    return {"processed": processed, "failed": failed, "skipped": skipped, "total": len(docs)}
+
+
 def build_rag_context(chunks: List[Dict[str, Any]]) -> str:
     """Format retrieved chunks into a context string for the LLM."""
     if not chunks:

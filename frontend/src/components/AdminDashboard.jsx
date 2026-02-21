@@ -405,10 +405,46 @@ function RetrievalTab() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [rechunkStatus, setRechunkStatus] = useState(null)
+  const [rechunkPolling, setRechunkPolling] = useState(null)
 
   useEffect(() => {
     loadSettings()
+    loadRechunkStatus()
   }, [])
+
+  useEffect(() => {
+    return () => { if (rechunkPolling) clearInterval(rechunkPolling) }
+  }, [rechunkPolling])
+
+  async function loadRechunkStatus() {
+    try {
+      const data = await api.adminGetRechunkStatus()
+      setRechunkStatus(data)
+    } catch (_) {}
+  }
+
+  async function handleRechunk() {
+    if (!window.confirm(
+      'Alle bestehenden Chunks werden gelöscht und neu generiert.\n' +
+      'Das kann je nach Dokumentanzahl mehrere Minuten dauern und verursacht OpenAI-Embedding-Kosten.\n\n' +
+      'Fortfahren?'
+    )) return
+    try {
+      await api.adminRechunkDocuments()
+      setRechunkStatus({ state: 'running' })
+      const interval = setInterval(async () => {
+        try {
+          const data = await api.adminGetRechunkStatus()
+          setRechunkStatus(data)
+          if (data.state !== 'running') clearInterval(interval)
+        } catch (_) {}
+      }, 2000)
+      setRechunkPolling(interval)
+    } catch (e) {
+      setError(e.message)
+    }
+  }
 
   async function loadSettings() {
     setLoading(true)
@@ -521,6 +557,33 @@ function RetrievalTab() {
       {settings && (
         <div className="provider-hint" style={{ marginTop: 12 }}>
           Aktive Werte: enabled={String(!!settings.rerank_enabled)}, candidates={settings.rerank_candidates}, top_n={settings.rerank_top_n}, model={settings.rerank_model}
+        </div>
+      )}
+
+      <hr style={{ margin: '24px 0', borderColor: 'var(--border)' }} />
+
+      <h3 className="admin-section-title">Dokumente neu verarbeiten</h3>
+      <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>
+        Löscht alle bestehenden Chunks und generiert sie mit dem aktuellen Chunker neu.
+        OCR wird nicht erneut ausgeführt. Verursacht OpenAI Embedding-Kosten.
+      </p>
+
+      <button
+        className="btn btn-secondary btn-small"
+        onClick={handleRechunk}
+        disabled={rechunkStatus?.state === 'running'}
+      >
+        {rechunkStatus?.state === 'running' ? 'Läuft...' : 'Jetzt neu chunken'}
+      </button>
+
+      {rechunkStatus && rechunkStatus.state !== 'idle' && (
+        <div className="provider-hint" style={{ marginTop: 10 }}>
+          {rechunkStatus.state === 'running' && 'Re-Chunking läuft im Hintergrund...'}
+          {rechunkStatus.state === 'done' && (() => {
+            const r = rechunkStatus.result || {}
+            return `Fertig: ${r.processed} verarbeitet, ${r.failed} Fehler, ${r.skipped} übersprungen (${r.total} gesamt)`
+          })()}
+          {rechunkStatus.state === 'error' && `Fehler: ${rechunkStatus.error}`}
         </div>
       )}
     </div>

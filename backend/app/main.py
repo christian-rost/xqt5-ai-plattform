@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -1158,6 +1158,49 @@ async def admin_update_rag_settings(
         metadata=updates,
     )
     return settings
+
+
+# Module-level state for the re-chunk background task (single-process deployment)
+_rechunk_status: Dict[str, Any] = {"state": "idle"}
+
+
+async def _run_rechunk_task(admin_user_id: str) -> None:
+    global _rechunk_status
+    _rechunk_status = {"state": "running", "started_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        result = await rag_mod.rechunk_all_documents()
+        _rechunk_status = {
+            "state": "done",
+            "result": result,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        logger.info("Re-chunk complete: %s", result)
+    except Exception as e:
+        _rechunk_status = {"state": "error", "error": str(e)}
+        logger.error("Re-chunk background task failed: %s", e, exc_info=True)
+
+
+@app.post("/api/admin/rechunk-documents", response_model=None)
+async def admin_rechunk_documents(
+    background_tasks: BackgroundTasks,
+    admin: Dict = Depends(get_current_admin),
+):
+    if _rechunk_status.get("state") == "running":
+        raise HTTPException(status_code=409, detail="Re-chunking is already in progress")
+    background_tasks.add_task(_run_rechunk_task, admin["id"])
+    audit.log_event(
+        "admin.rechunk.start",
+        user_id=admin["id"],
+        target_type="documents",
+        target_id="all",
+    )
+    return {"status": "started"}
+
+
+@app.get("/api/admin/rechunk-status", response_model=None)
+async def admin_rechunk_status(admin: Dict = Depends(get_current_admin)):
+    del admin
+    return _rechunk_status
 
 
 @app.get("/api/admin/models", response_model=None)

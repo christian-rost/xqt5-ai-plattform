@@ -318,6 +318,19 @@ export const api = {
     return response.json()
   },
 
+  async adminRechunkDocuments() {
+    const response = await authFetch(`${API_BASE}/api/admin/rechunk-documents`, { method: 'POST' })
+    if (response.status === 409) throw new Error('Re-Chunking läuft bereits')
+    if (!response.ok) throw new Error('Re-Chunking konnte nicht gestartet werden')
+    return response.json()
+  },
+
+  async adminGetRechunkStatus() {
+    const response = await authFetch(`${API_BASE}/api/admin/rechunk-status`)
+    if (!response.ok) throw new Error('Status konnte nicht abgerufen werden')
+    return response.json()
+  },
+
   async adminListModels() {
     const response = await authFetch(`${API_BASE}/api/admin/models`)
     if (!response.ok) throw new Error('Konnte Modell-Konfigurationen nicht laden')
