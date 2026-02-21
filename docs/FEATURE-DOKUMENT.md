@@ -134,5 +134,31 @@ Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente able
 10. **Upload-Fortschrittsanzeige**: Echtzeit-Fortschrittsbalken beim Hochladen (File-Transfer % + Server-Processing-Shimmer) — Chat und Pool
 
 ## Noch geplant
+
+### Tabellen-Extraktion & strukturierte Abfragen (SDE — Structured Data Extraction)
+
+**Motivation**: Hochgeladene Dokumente (Rechnungen, Berichte, Listen) enthalten häufig Tabellen mit numerischen Werten. Heute landen diese als Fließtext im RAG-Chunk — Berechnungen wie "Summe aller Rechnungen im Januar" sind so nicht zuverlässig möglich.
+
+**Konzept**:
+1. **Erkennung & Extraktion**: Beim Upload werden Markdown-Tabellen aus dem OCR-Output geparst (Mistral OCR liefert Tabellen bereits als `| Spalte | Wert |`). Ein LLM-Schritt kann zusätzlich unstrukturierte Tabellen normalisieren.
+2. **Strukturierte Speicherung**: Neue Tabelle `app_document_tables` speichert Tabellen pro Dokument:
+   - `headers` (JSONB): Spaltenbezeichnungen, z. B. `["Datum", "Betrag", "Beschreibung"]`
+   - `rows` (JSONB): Zeilendaten, z. B. `[["01.01.2026", "150.00", "Beratung"], ...]`
+   - `page_number`, `table_index`, `caption`, `raw_markdown`
+3. **Abfragen — zwei Ansätze**:
+   - **Direkt via SQL/JSONB**: Aggregationen wie `SUM`, `AVG`, `COUNT` direkt in PostgreSQL auf den JSONB-Daten
+   - **Text-to-SQL**: Nutzer stellt Frage in natürlicher Sprache → LLM generiert SQL-Query auf den Tabellendaten → Ergebnis wird zurückgegeben
+4. **Integration in Chat-RAG**: Bei Zahlen-/Berechnungsfragen werden automatisch Tabellendaten statt (oder zusätzlich zu) Text-Chunks einbezogen; Ergebnis erscheint als Antwort mit Quellenangabe (Dokument + Tabellenposition)
+
+**Beispiel-Flow**:
+> Upload: 12 Rechnungs-PDFs → Tabellen extrahiert und gespeichert
+> User: *"Wie hoch ist die Gesamtsumme der Rechnungen im Januar 2026?"*
+> System: Tabellendaten abfragen → `SELECT SUM(betrag::numeric) WHERE datum LIKE '01/2026%'` → *"Gesamtsumme Januar 2026: 4.320,00 €"* (Quellen: Rechnung-001.pdf, Rechnung-003.pdf, ...)
+
+**Scope-Unterstützung**: Funktioniert für eigene Dokumente (Conversation-Scope), Pool-Dokumente und globale Dokumente — analog zur bestehenden RAG-Scope-Logik.
+
+**Technische Abhängigkeiten**: Neue Migration `app_document_tables`, erweiterter Upload-Flow, optionaler LLM-Schritt für Tabellennormalisierung, Text-to-SQL-Modul im Backend.
+
+### Weitere geplante Features
 1. Workflow-Engine für automatisierte Abläufe
 2. SSO (OIDC/SAML)
