@@ -2067,6 +2067,18 @@ body {
   flex-direction: column;
 }
 
+.pool-text-modal {
+  width: min(760px, 100%);
+  max-height: 85vh;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
 .pool-preview-header {
   display: flex;
   align-items: center;
@@ -2131,6 +2143,50 @@ body {
 
 .pool-preview-error {
   color: #b00020;
+}
+
+.pool-text-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pool-text-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-gray);
+}
+
+.pool-text-input,
+.pool-text-editor {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--color-black);
+  background: #fff;
+}
+
+.pool-text-input:focus,
+.pool-text-editor:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(238, 127, 0, 0.15);
+}
+
+.pool-text-editor {
+  resize: vertical;
+  min-height: 220px;
+  line-height: 1.45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.pool-text-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 /* ── Pool Chat List ── */

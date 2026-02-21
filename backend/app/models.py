@@ -190,3 +190,8 @@ class SendPoolMessageRequest(BaseModel):
     temperature: Optional[float] = None
     stream: bool = False
     image_mode: Literal["auto", "on", "off"] = "auto"
+
+
+class UploadPoolTextRequest(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    content: str = Field(min_length=1, max_length=500000)

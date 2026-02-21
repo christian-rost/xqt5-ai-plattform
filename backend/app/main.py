@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -52,6 +53,7 @@ from .models import (
     UpdatePoolMemberRequest,
     UpdatePoolRequest,
     UpdateTemplateRequest,
+    UploadPoolTextRequest,
     UpdateUserRequest,
 )
 from . import admin as admin_crud
@@ -1597,6 +1599,60 @@ async def upload_pool_document(
                 logger.warning("Pool OCR asset indexing failed for %s: %s", doc["id"], e)
     except Exception as e:
         logger.error(f"RAG processing failed for pool doc {doc['id']}: {e}")
+        doc["status"] = "error"
+        doc["error_message"] = str(e)
+
+    return doc
+
+
+@app.post("/api/pools/{pool_id}/documents/text", response_model=None)
+@limiter.limit("20/minute")
+async def upload_pool_text(
+    pool_id: str,
+    payload: UploadPoolTextRequest,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    del request
+    pools_mod.require_pool_role(pool_id, current_user["id"], "editor")
+
+    text_content = payload.content.strip()
+    if not text_content:
+        raise HTTPException(status_code=422, detail="Text content cannot be empty")
+
+    title = (payload.title or "").strip()
+    if title:
+        filename = f"{title}.txt" if not title.lower().endswith(".txt") else title
+    else:
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H-%M")
+        filename = f"Eingefuegter Text {timestamp}.txt"
+
+    file_size_bytes = len(text_content.encode("utf-8"))
+    max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if file_size_bytes > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Text exceeds {MAX_UPLOAD_SIZE_MB}MB limit",
+        )
+
+    doc = documents_mod.create_document(
+        user_id=current_user["id"],
+        chat_id=None,
+        filename=filename,
+        file_type="txt",
+        file_size_bytes=file_size_bytes,
+        extracted_text=text_content,
+        pool_id=pool_id,
+    )
+
+    try:
+        chunk_count, _tokens_used = await rag_mod.process_document(
+            doc["id"], text_content, current_user["id"],
+        )
+        doc["chunk_count"] = chunk_count
+        doc["status"] = "ready"
+    except Exception as e:
+        logger.error(f"RAG processing failed for pool text doc {doc['id']}: {e}")
         doc["status"] = "error"
         doc["error_message"] = str(e)
 

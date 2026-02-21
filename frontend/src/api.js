@@ -591,6 +591,19 @@ export const api = {
     return response.json()
   },
 
+  async uploadPoolText(poolId, title, content) {
+    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || 'Text konnte nicht gespeichert werden')
+    }
+    return response.json()
+  },
+
   async deletePoolDocument(poolId, documentId) {
     const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/${documentId}`, {
       method: 'DELETE',

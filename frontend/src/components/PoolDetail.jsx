@@ -68,6 +68,17 @@ export default function PoolDetail({
     }
   }
 
+  async function handleUploadText(title, content) {
+    setError('')
+    try {
+      await api.uploadPoolText(pool.id, title, content)
+      await loadDocuments()
+    } catch (e) {
+      setError(e.message)
+      throw e
+    }
+  }
+
   async function handleDeleteDocument(docId) {
     setError('')
     try {
@@ -251,6 +262,7 @@ export default function PoolDetail({
             documents={documents}
             canEdit={canEdit}
             onUpload={handleUploadDocument}
+            onUploadText={handleUploadText}
             onDelete={handleDeleteDocument}
           />
         )}
