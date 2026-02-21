@@ -1,9 +1,8 @@
-export default function SourceDisplay({ sources, imageSources }) {
-  const hasTextSources = sources && sources.length > 0
-  const hasImageSources = imageSources && imageSources.length > 0
-  if (!hasTextSources && !hasImageSources) return null
+import { useState } from 'react'
 
-  // Deduplicate by filename
+export default function SourceDisplay({ sources, imageSources }) {
+  const [expanded, setExpanded] = useState({})
+
   const unique = []
   const seen = new Set()
   for (const s of (sources || [])) {
@@ -14,20 +13,44 @@ export default function SourceDisplay({ sources, imageSources }) {
     }
   }
 
+  const hasText = unique.length > 0
+  const hasImages = (imageSources || []).length > 0
+  if (!hasText && !hasImages) return null
+
+  const toggle = (fn) => setExpanded(p => ({ ...p, [fn]: !p[fn] }))
+
   return (
     <>
-      {hasTextSources && (
+      {hasText && (
         <div className="rag-sources">
           <span className="rag-sources-label">Sources:</span>
-          {unique.map((s, i) => (
-            <span key={i} className="source-tag" title={`Relevance: ${Math.round((s.similarity || 0) * 100)}%`}>
-              {s.filename || 'unknown'}
-            </span>
-          ))}
+          <div className="rag-source-list">
+            {unique.map((s, i) => {
+              const fn = s.filename || 'unknown'
+              const isOpen = expanded[fn]
+              return (
+                <div key={i} className="rag-source-item">
+                  <button
+                    className={`source-tag${s.excerpt ? ' source-tag--citable' : ''}${isOpen ? ' source-tag--open' : ''}`}
+                    onClick={() => s.excerpt && toggle(fn)}
+                    title={`Relevanz: ${Math.round((s.similarity || 0) * 100)}%`}
+                  >
+                    {fn}
+                    {s.excerpt && (
+                      <span className="source-tag-chevron">{isOpen ? '▲' : '▼'}</span>
+                    )}
+                  </button>
+                  {s.excerpt && isOpen && (
+                    <blockquote className="source-excerpt">„{s.excerpt}"</blockquote>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
-      {hasImageSources && (
+      {hasImages && (
         <div className="rag-image-sources">
           <span className="rag-sources-label">Image Sources:</span>
           <div className="rag-image-grid">

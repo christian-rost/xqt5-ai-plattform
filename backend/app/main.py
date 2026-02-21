@@ -470,6 +470,17 @@ def _apply_document_access_policy(llm_messages: List[Dict[str, str]]) -> None:
     _inject_system_context(llm_messages, policy)
 
 
+_EXCERPT_MAX = 350
+
+def _make_excerpt(content: str) -> str:
+    """Return a short readable excerpt from a chunk, stripping breadcrumb prefix."""
+    parts = content.split('\n\n', 1)
+    text = parts[1].strip() if len(parts) > 1 else content.strip()
+    if len(text) > _EXCERPT_MAX:
+        text = text[:_EXCERPT_MAX].rsplit(' ', 1)[0] + ' …'
+    return text
+
+
 async def _auto_name_conversation(conversation_id: str, user_message: str) -> None:
     """Generate a short title for the conversation using the LLM."""
     try:
@@ -563,7 +574,12 @@ async def send_message(
         if chunks:
             rag_context = rag_mod.build_rag_context(chunks)
             rag_sources = [
-                {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
+                {
+                    "filename": c["filename"],
+                    "similarity": round(c["similarity"], 3),
+                    "excerpt": _make_excerpt(c.get("content", "")),
+                    "chunk_index": c.get("chunk_index", 0),
+                }
                 for c in chunks
             ]
             _inject_system_context(llm_messages, rag_context)
@@ -1839,7 +1855,12 @@ async def send_pool_message(
         if chunks:
             rag_context = rag_mod.build_rag_context(chunks)
             rag_sources = [
-                {"filename": c["filename"], "similarity": round(c["similarity"], 3)}
+                {
+                    "filename": c["filename"],
+                    "similarity": round(c["similarity"], 3),
+                    "excerpt": _make_excerpt(c.get("content", "")),
+                    "chunk_index": c.get("chunk_index", 0),
+                }
                 for c in chunks
             ]
             _inject_system_context(llm_messages, rag_context)

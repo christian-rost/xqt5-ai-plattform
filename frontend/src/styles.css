@@ -1790,12 +1790,22 @@ body {
 
 .rag-sources {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--color-border);
+}
+
+.rag-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rag-source-item {
+  display: flex;
+  flex-direction: column;
 }
 
 .rag-sources-label {
@@ -1815,6 +1825,44 @@ body {
   border-radius: 4px;
   font-size: 11px;
   border: 1px solid #bee5eb;
+  cursor: default;
+  text-align: left;
+  align-self: flex-start;
+}
+
+.source-tag--citable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.source-tag--citable:hover {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.source-tag--open {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.source-tag-chevron {
+  margin-left: 4px;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.source-excerpt {
+  margin: 4px 0 0 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--color-primary);
+  background: rgba(0, 0, 0, 0.03);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  border-radius: 0 4px 4px 0;
 }
 
 .rag-image-sources {
