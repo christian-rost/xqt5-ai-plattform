@@ -115,6 +115,24 @@ Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente able
 4. Für Bild-Dokumente wird optional `image_data_url` aus `app_document_assets` geliefert
 5. Frontend: `PoolDocuments` ergänzt um Vorschau-Button und Modal
 
+## Phase RAGplus: RAG-Qualitätsverbesserungen + UX (umgesetzt 2026-02-22)
+
+### Verbessertes Chunking (Ansatz A+B)
+1. **Markdown-Section-aware Chunking**: Überschriften erkennen, Sektionsgrenzen respektieren, Breadcrumb-Header in jeden Chunk einbetten
+2. **Token-basierte Chunk-Größe**: 512 Tokens (statt 1500 Zeichen), 50 Tokens Overlap — präzise Größenkontrolle via tiktoken
+3. **Sentence Boundary Respect**: Chunks werden an Satzgrenzen aufgeteilt, keine abgeschnittenen Sätze
+4. **Admin Re-Chunk Feature**: Bestehende Dokumente per Knopfdruck mit der neuen Strategie neu chunken — mit Live-Fortschrittsanzeige im Admin-Dashboard
+
+### BM25 via PostgreSQL Full-Text Search
+5. **BM25-Suche**: Ersetzt ILIKE-Keyword-Supplement durch native PostgreSQL FTS (`tsvector` GENERATED STORED, GIN-Index, `websearch_to_tsquery('german', ...)`, `ts_rank_cd`)
+6. **Reciprocal Rank Fusion (RRF)**: Vector-Suche und BM25-Suche werden per RRF (k=60) zu einem gemeinsamen Ranking kombiniert — robuster als reine Score-Addition
+7. **Keine Extension nötig**: `tsvector` / GIN / `ts_rank_cd` sind built-in PostgreSQL — Supabase-kompatibel ohne zusätzliche Extensions
+
+### UX-Verbesserungen
+8. **Sidebar 50:50 Split**: Pools und Conversations teilen sich den Sidebar-Platz 50:50 — beide Sektionen sind gleichzeitig sichtbar und scrollen unabhängig
+9. **Drag-to-Resize Sidebar**: Ziehbarer Divider zwischen Pools und Conversations für individuelle Aufteilung (15-80%)
+10. **Upload-Fortschrittsanzeige**: Echtzeit-Fortschrittsbalken beim Hochladen (File-Transfer % + Server-Processing-Shimmer) — Chat und Pool
+
 ## Noch geplant
 1. Workflow-Engine für automatisierte Abläufe
 2. SSO (OIDC/SAML)

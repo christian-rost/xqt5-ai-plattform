@@ -420,7 +420,56 @@
 #### Design-Entscheidungen
 - **Globale Dokumente weiterhin API-seitig vorhanden**: Scope `chat_id IS NULL` wird weiterhin unterstützt (z. B. in Dokumentlisten/Fallback-Pfaden); Haupt-UI-Fluss bleibt chat- und pool-zentriert
 - **Conversations: Wide-Net-Retrieval**: Statt threshold-Filterung alle verfügbaren Chunks abrufen und in Dokumentreihenfolge sortieren; relevanter für Einzeldokument-Conversations
-- **Hybrid Search**: ILIKE-Supplement garantiert dass Kapitel mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen
+- **Hybrid Search**: ILIKE-Supplement garantiert dass Kapitel mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen (→ in RAGplus durch BM25+RRF ersetzt)
+
+### Phase RAGplus: Verbessertes Chunking + BM25 + Re-Chunk + UX (2026-02-22)
+
+#### Verbessertes Chunking-System (Ansatz A+B)
+1. **Markdown-Section-aware Chunking** (`rag.py`): `chunk_text()` erkennt Markdown-Überschriften und respektiert Sektionsgrenzen. Jeder Chunk bekommt einen Breadcrumb-Header (`## Kapitel > ### Abschnitt`) als Kontext-Anker, damit Retrieval-Treffer ohne umliegenden Text verständlich sind.
+2. **Token-basierte Chunk-Größe**: Chunk-Größe und Overlap in Tokens (tiktoken, cl100k_base Encoder) statt Zeichen.
+   - `CHUNK_SIZE`: 512 Tokens (war 1500 Zeichen)
+   - `CHUNK_OVERLAP`: 50 Tokens (war 200 Zeichen)
+   - Kommentar in `config.py`: "CHUNK_SIZE und CHUNK_OVERLAP in TOKENS seit RAGplus"
+3. **Neue Hilfsfunktionen** in `rag.py`: `_HEADING_RE`, `_BULLET_RE`, `_SENT_SPLIT_RE`, `_get_encoder()`, `_tok()`, `_breadcrumb()`, `_split_into_units()`, `_overlap_tail()`
+4. **Neue Dependency**: `tiktoken>=0.7.0` in `pyproject.toml` und `Dockerfile`
+
+#### Admin Re-Chunk Feature
+5. **Backend** (`main.py`):
+   - `POST /api/admin/rechunk-documents` — startet Re-Chunking aller Dokumente als FastAPI `BackgroundTask`
+   - `GET /api/admin/rechunk-status` — liefert Status (`idle`/`running`/`done`/`error`) + Progress (`done_count`/`total_count`)
+   - Globaler Dict `_rechunk_status` in `main.py` für thread-safe Statustracking
+   - `rechunk_all_documents(progress_callback)` in `rag.py` — löscht alte Chunks, rechunked + embeddet alle Dokumente neu
+6. **Frontend** (`AdminDashboard.jsx`):
+   - "Dokumente neu chunken"-Button im Retrieval-Tab
+   - Live-Fortschrittsanzeige via 1s-Polling — `rechunkIntervalRef = useRef(null)` (kein useState, kein Re-Render-Cleanup-Bug)
+   - Status-Anzeige: "Läuft: X / Y Dokumente verarbeitet"
+7. **API** (`api.js`): `adminRechunkDocuments()`, `adminGetRechunkStatus()`
+
+#### BM25 via PostgreSQL FTS (Ersetzt ILIKE Keyword Supplement)
+8. **Migration** (`supabase/migrations/20260222_bm25_fts.sql`):
+   - GENERATED ALWAYS STORED `content_fts tsvector` Spalte in `app_document_chunks`
+   - GIN-Index `idx_doc_chunks_content_fts`
+   - `DROP FUNCTION IF EXISTS keyword_search_chunks(text, uuid, int, uuid, uuid)` (PGRST203-Prävention)
+   - RPC `keyword_search_chunks()`: `websearch_to_tsquery('german', ...)`, `ts_rank_cd(content_fts, query, 32)`, scope-isoliert
+9. **`rag.py` Änderungen**:
+   - **Entfernt**: `_extract_query_keywords()`, `_keyword_supplement_chunks()`, `_GERMAN_STOPWORDS`
+   - **Neu**: `_bm25_search_chunks()` — Wrapper für `keyword_search_chunks` RPC
+   - **Neu**: `_reciprocal_rank_fusion()` — RRF (k=60) merged Vector- und BM25-Resultate nach Rank (nicht Score)
+   - **Aktualisiert**: `_search_chunks_hybrid()` und `retrieve_chunks_with_strategy()` verwenden BM25+RRF
+
+#### UX-Verbesserungen
+10. **Sidebar 50:50 Split mit Drag-to-Resize** (`Sidebar.jsx` + `styles.css`):
+    - Pools- und Conversations-Sektion teilen verfügbaren Sidebar-Platz 50:50 (Standardwert, einstellbar 15-80%)
+    - `sidebar-panels` als Flex-Container (flex:1) mit zwei Panels + `sidebar-drag-divider`
+    - Drag-Handling via globalen `mousemove`/`mouseup` Listenern + `useRef` für Drag-State (kein Re-Render-Overhead)
+    - Beide Panels scrollen unabhängig (`overflow-y: auto`)
+    - `.pool-list-section` border-bottom entfernt — Drag-Divider übernimmt visuelle Trennung
+11. **Upload-Fortschrittsanzeige** (`FileUpload.jsx`, `PoolDocuments.jsx`, `api.js`, `styles.css`):
+    - `uploadWithXhr()` Helper in `api.js`: XHR statt fetch, Authorization-Header aus localStorage, `onProgress`-Callback
+    - `onProgress(0-100)` während File-Transfer, `onProgress(-1)` wenn Datei gesendet + Server verarbeitet (OCR)
+    - Chat-Kontext (`FileUpload.jsx`): Kompakter Fortschrittsbalken (120px) mit Prozentanzeige unter dem Upload-Button
+    - Pool-Kontext (`PoolDocuments.jsx`): Pending-Dokument-Karte in der Liste (Dateiname + Fortschrittsbalken + Statustext)
+    - Shimmer-Animation (`@keyframes upload-processing`) für die Server-Processing-Phase
 
 ## Nächste Umsetzungsschritte
 1. **Workflow-Engine** für automatisierte Abläufe

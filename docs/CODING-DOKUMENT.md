@@ -144,6 +144,40 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 - **Berechtigung:** Mindestrolle `editor`; Rate Limit 20/min analog zu `/documents/upload`.
 - **Design-Entscheidung:** Kein separater Code-Pfad — Text wird mit `SpooledTemporaryFile` als `UploadFile` verpackt und über die vorhandene `process_document()`-Pipeline verarbeitet.
 
+### 2026-02-22 (RAGplus — Verbesserte Chunking-Strategie + BM25 + UX)
+
+- **Neues Chunking-System: Markdown-Section-aware + Token-basiert**
+  - Ersetzt: Einfaches Paragraph-Splitting (character-basiert).
+  - `chunk_text()` erkennt Markdown-Überschriften, respektiert Sektionsgrenzen, fügt Breadcrumb-Header in jeden Chunk ein (z. B. `## Kapitel > ### Unterkapitel`), damit Retrieval-Ergebnisse ohne Kontext verständlich sind.
+  - Chunk-Größe und Overlap werden in **Tokens** (tiktoken, cl100k_base) gemessen, nicht mehr in Zeichen.
+  - `CHUNK_SIZE`: 512 Tokens (war 1500 Zeichen), `CHUNK_OVERLAP`: 50 Tokens (war 200 Zeichen).
+  - Neue Dependency: `tiktoken>=0.7.0`.
+
+- **Fehler: `chunk_text()` erzeugte leere Chunks bei direkt aufeinander folgenden Überschriften.**
+  Ursache: Wenn eine Parent-Heading direkt von einer Sub-Heading gefolgt wird (kein Inhalt dazwischen), wurde ein Chunk mit nur dem Breadcrumb-Header, aber ohne echten Inhalt erstellt.
+  Korrektur: Flush-Bedingung von `if current_lines or heading_stack` auf `if any(line.strip() for line in current_lines)` geändert. **Regel: Chunks ohne echten Inhalt nie emittieren.**
+
+- **BM25 via PostgreSQL Full-Text Search — Ersetzt ILIKE-Keyword-Supplement**
+  - Migration `supabase/migrations/20260222_bm25_fts.sql`:
+    - `content_fts tsvector GENERATED ALWAYS AS (...) STORED` in `app_document_chunks`
+    - GIN-Index für schnelle FTS-Queries
+    - `keyword_search_chunks()` RPC: `websearch_to_tsquery('german', ...)` + `ts_rank_cd(content_fts, query, 32)`, scope-isoliert (conversation/pool/global)
+  - Hybrid Search: Vector-Suche + BM25 werden per **Reciprocal Rank Fusion (RRF, k=60)** gemergt.
+  - Entfernt: `_extract_query_keywords()`, `_keyword_supplement_chunks()`, `_GERMAN_STOPWORDS`.
+  - Hinweis: `DROP FUNCTION IF EXISTS keyword_search_chunks(text, uuid, int, uuid, uuid)` vor der neuen RPC-Erstellung ausführen, um PGRST203 zu vermeiden (→ Präventiv-Maßnahme aus 2026-02-19).
+
+- **Fehler: Rechunk-Polling — `useState` statt `useRef` für `setInterval`-ID.**
+  Ursache: `setRechunkPolling(interval)` mit React `useState` löste bei jedem State-Update ein Re-Render aus, was in React StrictMode's `useEffect`-Cleanup-Phase das Interval vorzeitig löschte (clearInterval).
+  Korrektur: `rechunkIntervalRef = useRef(null)` — direkte Mutation ohne Render-Zyklus.
+  **Regel: Interval-IDs und Timeout-IDs immer in `useRef` speichern, nie in `useState`.**
+
+- **Upload-Fortschrittsanzeige mit XHR statt fetch**
+  `fetch` kennt keinen Upload-Fortschritt-Callback. Für Upload-Endpoints wird jetzt `XMLHttpRequest` verwendet:
+  - `xhr.upload.addEventListener('progress', ...)` → Bytes-Fortschritt 0-100% während File-Transfer
+  - `xhr.upload.addEventListener('load', ...)` → Datei gesendet, Server verarbeitet → `onProgress(-1)` (Indeterminate-Phase)
+  - `uploadWithXhr()` Helper in `api.js` kapselt Auth-Header-Handling (liest Token aus localStorage).
+  **Regel: Für Upload-Progress immer XHR verwenden, nicht fetch.**
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).
