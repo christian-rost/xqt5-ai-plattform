@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 
 const TABS = [
@@ -406,22 +406,33 @@ function RetrievalTab() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [rechunkStatus, setRechunkStatus] = useState(null)
-  const [rechunkPolling, setRechunkPolling] = useState(null)
+  const rechunkIntervalRef = useRef(null)
 
   useEffect(() => {
     loadSettings()
     loadRechunkStatus()
+    return () => { if (rechunkIntervalRef.current) clearInterval(rechunkIntervalRef.current) }
   }, [])
-
-  useEffect(() => {
-    return () => { if (rechunkPolling) clearInterval(rechunkPolling) }
-  }, [rechunkPolling])
 
   async function loadRechunkStatus() {
     try {
       const data = await api.adminGetRechunkStatus()
       setRechunkStatus(data)
     } catch (_) {}
+  }
+
+  function startPolling() {
+    if (rechunkIntervalRef.current) clearInterval(rechunkIntervalRef.current)
+    rechunkIntervalRef.current = setInterval(async () => {
+      try {
+        const data = await api.adminGetRechunkStatus()
+        setRechunkStatus(data)
+        if (data.state !== 'running') {
+          clearInterval(rechunkIntervalRef.current)
+          rechunkIntervalRef.current = null
+        }
+      } catch (_) {}
+    }, 1000)
   }
 
   async function handleRechunk() {
@@ -432,15 +443,8 @@ function RetrievalTab() {
     )) return
     try {
       await api.adminRechunkDocuments()
-      setRechunkStatus({ state: 'running' })
-      const interval = setInterval(async () => {
-        try {
-          const data = await api.adminGetRechunkStatus()
-          setRechunkStatus(data)
-          if (data.state !== 'running') clearInterval(interval)
-        } catch (_) {}
-      }, 2000)
-      setRechunkPolling(interval)
+      setRechunkStatus({ state: 'running', progress: { done: 0, total: 0 } })
+      startPolling()
     } catch (e) {
       setError(e.message)
     }
@@ -578,7 +582,12 @@ function RetrievalTab() {
 
       {rechunkStatus && rechunkStatus.state !== 'idle' && (
         <div className="provider-hint" style={{ marginTop: 10 }}>
-          {rechunkStatus.state === 'running' && 'Re-Chunking läuft im Hintergrund...'}
+          {rechunkStatus.state === 'running' && (() => {
+            const p = rechunkStatus.progress || {}
+            return p.total > 0
+              ? `Läuft: ${p.done} / ${p.total} Dokumente`
+              : 'Re-Chunking läuft...'
+          })()}
           {rechunkStatus.state === 'done' && (() => {
             const r = rechunkStatus.result || {}
             return `Fertig: ${r.processed} verarbeitet, ${r.failed} Fehler, ${r.skipped} übersprungen (${r.total} gesamt)`

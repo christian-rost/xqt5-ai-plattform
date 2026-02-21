@@ -1166,9 +1166,17 @@ _rechunk_status: Dict[str, Any] = {"state": "idle"}
 
 async def _run_rechunk_task(admin_user_id: str) -> None:
     global _rechunk_status
-    _rechunk_status = {"state": "running", "started_at": datetime.now(timezone.utc).isoformat()}
+    _rechunk_status = {
+        "state": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "progress": {"done": 0, "total": 0},
+    }
+
+    def on_progress(done: int, total: int) -> None:
+        _rechunk_status["progress"] = {"done": done, "total": total}
+
     try:
-        result = await rag_mod.rechunk_all_documents()
+        result = await rag_mod.rechunk_all_documents(progress_callback=on_progress)
         _rechunk_status = {
             "state": "done",
             "result": result,

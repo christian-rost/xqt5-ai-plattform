@@ -805,11 +805,16 @@ async def search_similar_assets(
         return []
 
 
-async def rechunk_all_documents() -> Dict[str, int]:
+async def rechunk_all_documents(
+    progress_callback: Optional[Any] = None,
+) -> Dict[str, int]:
     """Re-chunk all existing documents with the current chunker.
 
     Deletes old chunks from app_document_chunks and re-runs process_document()
     for every document that has extracted_text. Does NOT re-run OCR.
+
+    progress_callback(done, total) is called after each document so callers
+    can track live progress (e.g. for a status endpoint).
 
     Returns a dict with processed / failed / skipped / total counts.
     """
@@ -825,6 +830,9 @@ async def rechunk_all_documents() -> Dict[str, int]:
     failed = 0
     skipped = 0
 
+    if progress_callback:
+        progress_callback(0, len(docs))
+
     for doc in docs:
         doc_id = doc["id"]
         text = (doc.get("extracted_text") or "").strip()
@@ -833,18 +841,20 @@ async def rechunk_all_documents() -> Dict[str, int]:
 
         if not text:
             skipped += 1
-            continue
+        else:
+            try:
+                supabase.table("app_document_chunks").delete().eq("document_id", doc_id).execute()
+                documents_mod.update_document_status(doc_id, "processing")
+                await process_document(doc_id, text, user_id)
+                processed += 1
+                logger.info("Re-chunked: %s (%s)", filename, doc_id)
+            except Exception as e:
+                logger.error("Re-chunk failed for %s (%s): %s", filename, doc_id, e, exc_info=True)
+                documents_mod.update_document_status(doc_id, "error", error_message=f"Re-chunk: {e}")
+                failed += 1
 
-        try:
-            supabase.table("app_document_chunks").delete().eq("document_id", doc_id).execute()
-            documents_mod.update_document_status(doc_id, "processing")
-            await process_document(doc_id, text, user_id)
-            processed += 1
-            logger.info("Re-chunked: %s (%s)", filename, doc_id)
-        except Exception as e:
-            logger.error("Re-chunk failed for %s (%s): %s", filename, doc_id, e, exc_info=True)
-            documents_mod.update_document_status(doc_id, "error", error_message=f"Re-chunk: {e}")
-            failed += 1
+        if progress_callback:
+            progress_callback(processed + failed + skipped, len(docs))
 
     return {"processed": processed, "failed": failed, "skipped": skipped, "total": len(docs)}
 
