@@ -1612,7 +1612,9 @@ body {
 
 .file-upload {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .upload-btn {
@@ -1638,6 +1640,74 @@ body {
 .upload-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* FileUpload progress bar (chat context) */
+.file-upload-progress {
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-upload-bar {
+  height: 4px;
+  background: var(--color-primary);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+  min-width: 4px;
+}
+
+.file-upload-bar--processing {
+  width: 100% !important;
+  background: linear-gradient(90deg, var(--color-primary) 30%, transparent 50%, var(--color-primary) 70%);
+  background-size: 200% 100%;
+  animation: upload-processing 1.4s linear infinite;
+}
+
+.file-upload-label {
+  font-size: 10px;
+  color: var(--color-gray);
+  white-space: nowrap;
+}
+
+/* Pool upload pending card */
+.pool-doc-uploading {
+  border: 1px dashed var(--color-border) !important;
+  opacity: 0.85;
+}
+
+.pool-upload-progress {
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  margin: 4px 0 2px;
+  overflow: hidden;
+}
+
+.pool-upload-bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+  min-width: 6px;
+}
+
+.pool-upload-bar--processing {
+  width: 100% !important;
+  background: linear-gradient(90deg, var(--color-primary) 30%, #ffb46a 50%, var(--color-primary) 70%);
+  background-size: 200% 100%;
+  animation: upload-processing 1.4s linear infinite;
+}
+
+.pool-upload-status {
+  color: var(--color-primary) !important;
+  font-style: italic;
+}
+
+@keyframes upload-processing {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 /* ── Document List (tags under input) ── */

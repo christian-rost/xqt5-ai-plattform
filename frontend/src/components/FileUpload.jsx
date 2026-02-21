@@ -2,21 +2,25 @@ import { useRef, useState } from 'react'
 
 export default function FileUpload({ chatId, onUploadComplete, disabled }) {
   const fileInputRef = useRef(null)
-  const [uploading, setUploading] = useState(false)
+  // null = idle, 0-100 = upload%, -1 = server processing
+  const [uploadPct, setUploadPct] = useState(null)
 
   async function handleFileChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploading(true)
+    setUploadPct(0)
     try {
-      await onUploadComplete(file, chatId)
+      await onUploadComplete(file, chatId, setUploadPct)
     } catch {
       // Error handled by parent
     } finally {
-      setUploading(false)
+      setUploadPct(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
+
+  const uploading = uploadPct !== null
+  const isProcessing = uploadPct === -1
 
   return (
     <div className="file-upload">
@@ -34,8 +38,19 @@ export default function FileUpload({ chatId, onUploadComplete, disabled }) {
         disabled={disabled || uploading}
         title="Upload PDF, TXT or image"
       >
-        {uploading ? '...' : '\u{1F4CE}'}
+        {uploading ? '⏳' : '\u{1F4CE}'}
       </button>
+      {uploading && (
+        <div className="file-upload-progress">
+          <div
+            className={`file-upload-bar ${isProcessing ? 'file-upload-bar--processing' : ''}`}
+            style={!isProcessing ? { width: `${uploadPct}%` } : undefined}
+          />
+          <span className="file-upload-label">
+            {isProcessing ? 'Verarbeitung...' : `${uploadPct}%`}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

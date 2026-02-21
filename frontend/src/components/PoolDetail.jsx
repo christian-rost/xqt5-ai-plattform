@@ -58,10 +58,10 @@ export default function PoolDetail({
     loadMembers()
   }, [loadDocuments, loadChats, loadMembers])
 
-  async function handleUploadDocument(file) {
+  async function handleUploadDocument(file, onProgress) {
     setError('')
     try {
-      await api.uploadPoolDocument(pool.id, file)
+      await api.uploadPoolDocument(pool.id, file, onProgress)
       await loadDocuments()
     } catch (e) {
       setError(e.message)

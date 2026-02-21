@@ -63,6 +63,37 @@ async function tryRefresh() {
   }
 }
 
+// XHR-based upload for progress tracking.
+// onProgress(pct): 0-100 = file transfer %, -1 = server processing (file sent, waiting for response)
+function uploadWithXhr(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    const token = getAccessToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+      })
+      xhr.upload.addEventListener('load', () => onProgress(-1))
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)) } catch { resolve(xhr.responseText) }
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText)
+          reject(new Error(err.detail || `HTTP ${xhr.status}`))
+        } catch { reject(new Error(`HTTP ${xhr.status}`)) }
+      }
+    }
+    xhr.onerror = () => reject(new Error('Netzwerkfehler beim Hochladen'))
+    xhr.send(formData)
+  })
+}
+
 export const api = {
   // Auth
   async register(username, email, password) {
@@ -417,19 +448,11 @@ export const api = {
   },
 
   // Documents / RAG
-  async uploadDocument(file, chatId = null) {
+  async uploadDocument(file, chatId = null, onProgress = null) {
     const formData = new FormData()
     formData.append('file', file)
     if (chatId) formData.append('chat_id', chatId)
-    const response = await authFetch(`${API_BASE}/api/documents/upload`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Upload fehlgeschlagen')
-    }
-    return response.json()
+    return uploadWithXhr(`${API_BASE}/api/documents/upload`, formData, onProgress)
   },
 
   async listDocuments(chatId = null, scope = 'all') {
@@ -590,18 +613,10 @@ export const api = {
     return response.json()
   },
 
-  async uploadPoolDocument(poolId, file) {
+  async uploadPoolDocument(poolId, file, onProgress = null) {
     const formData = new FormData()
     formData.append('file', file)
-    const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/upload`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Upload fehlgeschlagen')
-    }
-    return response.json()
+    return uploadWithXhr(`${API_BASE}/api/pools/${poolId}/documents/upload`, formData, onProgress)
   },
 
   async uploadPoolText(poolId, title, content) {

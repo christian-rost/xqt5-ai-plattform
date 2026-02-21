@@ -344,10 +344,10 @@ export default function App() {
   }
 
   // Document handlers
-  async function handleUploadDocument(file, chatId) {
+  async function handleUploadDocument(file, chatId, onProgress) {
     setError('')
     try {
-      await api.uploadDocument(file, chatId)
+      await api.uploadDocument(file, chatId, onProgress)
       await loadDocuments()
     } catch (e) {
       setError(e.message)

@@ -4,6 +4,8 @@ import { api } from '../api'
 export default function PoolDocuments({ poolId, documents, canEdit, onUpload, onUploadText, onDelete }) {
   const fileInputRef = useRef(null)
   const [uploading, setUploading] = useState(false)
+  // null = idle, { name, pct } = upload in progress (pct: 0-100 or -1 for server processing)
+  const [uploadingFile, setUploadingFile] = useState(null)
   const [textSaving, setTextSaving] = useState(false)
   const [showTextModal, setShowTextModal] = useState(false)
   const [textTitle, setTextTitle] = useState('')
@@ -17,12 +19,14 @@ export default function PoolDocuments({ poolId, documents, canEdit, onUpload, on
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
+    setUploadingFile({ name: file.name, pct: 0 })
     try {
-      await onUpload(file)
+      await onUpload(file, (pct) => setUploadingFile({ name: file.name, pct }))
     } catch {
       // Error handled by parent
     } finally {
       setUploading(false)
+      setUploadingFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -117,13 +121,30 @@ export default function PoolDocuments({ poolId, documents, canEdit, onUpload, on
         </div>
       )}
 
-      {documents.length === 0 ? (
+      {documents.length === 0 && !uploadingFile ? (
         <div className="pool-empty-state">
           Noch keine Dokumente vorhanden.
           {canEdit && ' Lade ein Dokument hoch, um loszulegen.'}
         </div>
       ) : (
         <div className="pool-document-list">
+          {uploadingFile && (
+            <div className="pool-doc-item pool-doc-uploading">
+              <span className="pool-doc-icon">📄</span>
+              <div className="pool-doc-info">
+                <span className="pool-doc-name">{uploadingFile.name}</span>
+                <div className="pool-upload-progress">
+                  <div
+                    className={`pool-upload-bar ${uploadingFile.pct === -1 ? 'pool-upload-bar--processing' : ''}`}
+                    style={uploadingFile.pct >= 0 ? { width: `${uploadingFile.pct}%` } : undefined}
+                  />
+                </div>
+                <span className="pool-doc-meta pool-upload-status">
+                  {uploadingFile.pct === -1 ? 'OCR & Verarbeitung...' : `Hochladen ${uploadingFile.pct}%`}
+                </span>
+              </div>
+            </div>
+          )}
           {documents.map((doc) => (
             <div key={doc.id} className={`pool-doc-item doc-status-${doc.status}`}>
               <span className="pool-doc-icon">
