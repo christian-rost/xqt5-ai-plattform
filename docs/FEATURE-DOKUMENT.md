@@ -159,6 +159,103 @@ Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente able
 
 **Technische Abhängigkeiten**: Neue Migration `app_document_tables`, erweiterter Upload-Flow, optionaler LLM-Schritt für Tabellennormalisierung, Text-to-SQL-Modul im Backend.
 
-### Weitere geplante Features
-1. Workflow-Engine für automatisierte Abläufe
-2. SSO (OIDC/SAML)
+### Dokumente & Wissensmanagement
+
+**Automatische Zusammenfassung beim Upload**
+Beim Indexieren wird direkt eine LLM-generierte Kurzzusammenfassung gespeichert. Sichtbar im Dokument-Tab und optional als zusätzlicher RAG-Kontext ("Was ist der Inhalt dieses Dokuments?"). Geringer Mehraufwand: ein LLM-Call beim Upload.
+
+**Dokument-Tagging**
+Manuell vergebene oder LLM-automatisch generierte Tags pro Dokument (z. B. "Rechnung", "Vertrag", "Protokoll"). Ermöglicht gefilterte RAG-Suche: "Suche nur in Rechnungen" oder "Suche nur in Dokumenten aus 2025".
+
+**Dokumentversionen**
+Bei erneutem Upload eines Dokuments mit identischem Dateinamen wird die alte Version archiviert statt überschrieben. Versionsverlauf im UI einsehbar; ältere Versionen können aus dem RAG-Index ausgeschlossen werden.
+
+**Ablaufdatum für Dokumente**
+Dokumente können mit einem Ablaufdatum versehen werden (z. B. Preislisten, temporäre Richtlinien). Nach Ablauf werden sie automatisch aus dem RAG-Index deaktiviert und im UI als "abgelaufen" markiert.
+
+---
+
+### Chat & RAG
+
+**Zitatmodus (erweiterte Source-Attribution)**
+RAG-Antworten enthalten nicht nur den Dateinamen als Quelle, sondern exakte Textzitate mit Seitenangabe. Erweiterung der bestehenden `SourceDisplay`-Komponente; geringer Mehraufwand.
+
+**Lücken-Erkennung (Knowledge Gap Detection)**
+Das System erkennt, wenn Fragen wiederholt keine guten RAG-Treffer liefern, und meldet im Admin-Dashboard: "Zu folgenden Themen fehlen Dokumente." Basis: niedrige Similarity-Scores als Signal.
+
+**Einzeldokument-Fokus**
+Nutzer kann einen Chat explizit auf ein bestimmtes Dokument beschränken ("Nur dieses Dokument befragen"). Filtert die RAG-Suche hart auf `document_id`, ignoriert alle anderen Dokumente.
+
+**Konversations-Export**
+Chat-Verlauf als PDF oder Markdown exportieren — inkl. Quellenhinweisen. Weitgehend Frontend-seitig umsetzbar (kein neues Backend-Modul nötig).
+
+---
+
+### Zusammenarbeit
+
+**Konversation teilen**
+Read-only Deeplink auf eine Konversation — ähnlich wie bei anderen Chat-Tools. Empfänger sieht den Verlauf ohne eigenen Account (oder mit, je nach Konfiguration).
+
+**Pool-Benachrichtigungen**
+Pool-Mitglieder erhalten eine Benachrichtigung (In-App oder E-Mail), wenn neue Dokumente hochgeladen oder Pool-Chats aktualisiert werden.
+
+**Kommentare auf Nachrichten**
+Nutzer können KI-Antworten annotieren oder mit Kommentaren versehen — für interne Qualitätssicherung oder Teamdiskussion zu einem bestimmten Ergebnis.
+
+---
+
+### Automatisierung
+
+**E-Mail-Eingang als Dokument**
+E-Mails an eine dedizierte Adresse werden automatisch als Dokument in einen konfigurierten Pool verarbeitet (Text + Anhänge). Ermöglicht passiven Wissensaufbau ohne manuellen Upload.
+
+**Webhooks**
+Externe Systeme bei Ereignissen benachrichtigen (z. B. "Dokument verarbeitet", "neue Pool-Nachricht"). Konfigurierbar pro Pool oder global im Admin-Dashboard.
+
+**Workflow-Engine**
+Automatisierte mehrstufige Abläufe: Dokument eingeht → Zusammenfassung erstellen → Ergebnis in Pool-Chat posten → Webhook auslösen. Visueller Editor für Workflows geplant.
+
+**Geplante Neuverarbeitung**
+Dokumente zu einem definierten Zeitpunkt automatisch neu chunken und reindexieren (z. B. täglich für Live-Feeds oder nach Modell-Updates).
+
+---
+
+### Analytics & Qualität
+
+**Abfrage-Analytics**
+Welche Themen werden am häufigsten gefragt, welche Dokumente am häufigsten abgerufen — sichtbar im Admin-Dashboard als Nutzungsstatistik.
+
+**RAG-Qualitätsmetrik**
+Durchschnittliche Similarity-Scores und Retrieval-Trefferquote über die Zeit. Gibt Hinweise ob neue Dokumente oder ein Re-Chunk nötig ist.
+
+**Kostenaufschlüsselung nach Pool**
+Im Admin-Dashboard: welcher Pool verursacht wie viele Embedding- und LLM-Kosten — für interne Verrechnung oder Budgetkontrolle.
+
+---
+
+### KI-Features
+
+**Agent-Modus**
+LLM plant selbst mehrstufige Aufgaben: recherchieren (RAG), berechnen (SDE/Tabellen), zusammenfassen, Ergebnis formatieren — ohne dass der Nutzer jeden Schritt vorgibt. Basis für komplexe Assistenten-Workflows.
+
+**Auto-Tagging**
+LLM vergibt beim Upload automatisch Kategorien und Tags basierend auf dem extrahierten Text. Kann manuell überschrieben werden.
+
+**Übersetzung**
+Dokumente oder Chat-Antworten on-the-fly übersetzen. Wahlweise beim Upload (Dokument wird auf Deutsch indexiert unabhängig der Originalsprache) oder im Chat ("Antworte auf Englisch").
+
+---
+
+### Enterprise & Compliance
+
+**Abteilungs-/Team-Hierarchie**
+Nutzer in Abteilungen organisieren; Pools können auf Abteilungsebene sichtbar oder eingeschränkt sein. Erleichtert Governance in größeren Organisationen.
+
+**DSGVO-Tools**
+Nutzer-Daten-Export (alle Konversationen, Dokumente, Nutzungsdaten) und vollständige Löschung auf Anfrage — als Admin-Funktion oder Self-Service.
+
+**Compliance-Modus**
+Konfigurierbar: bestimmte LLM-Provider sperren (z. B. nur EU-Hosting), Datenverarbeitung auf definierten Standort beschränken, Audit-Pflicht für alle KI-Antworten.
+
+**SSO (OIDC/SAML)**
+Anbindung an Unternehmens-Identity-Provider (Azure AD, Okta, Google Workspace) für Single Sign-On und automatische Rollenvergabe.
