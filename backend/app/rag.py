@@ -33,6 +33,9 @@ _BULLET_RE = re.compile(r"^\s*[-*•]\s+|^\s*\d+[.)]\s+")
 # Deliberately simple — overlaps prevent hard boundary errors.
 _SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ\d\"])")
 
+# Page markers injected by documents.py during OCR extraction
+_PAGE_MARKER_RE = re.compile(r"^<!-- page:(\d+) -->$")
+
 # Module-level tiktoken encoder (lazy-loaded once, then cached)
 _encoder = None
 
@@ -99,10 +102,12 @@ def chunk_text(
     text: str,
     chunk_size: int = CHUNK_SIZE,
     overlap: int = CHUNK_OVERLAP,
-) -> List[str]:
+) -> List[Tuple[str, Optional[int]]]:
     """Markdown-section-aware chunker with token-based sizing and header injection.
 
-    Improvements over the previous character-based chunker:
+    Returns a list of (chunk_text, page_number) tuples. page_number is the
+    1-based page number at which the section starts (from <!-- page:N --> markers
+    injected by documents.py), or None if no page markers are present.
 
     A) **Markdown-section-aware**: The input text (Mistral OCR markdown) is split
        at heading boundaries (``#`` … ``######``).  Each section keeps its own
@@ -132,12 +137,19 @@ def chunk_text(
     # ------------------------------------------------------------------
     # Step 1 — Parse into sections at heading boundaries
     # ------------------------------------------------------------------
-    # Each section: (heading_stack, content_lines)
-    sections: List[Tuple[List[Tuple[int, str]], List[str]]] = []
+    # Each section: (heading_stack, content_lines, start_page)
+    sections: List[Tuple[List[Tuple[int, str]], List[str], Optional[int]]] = []
     heading_stack: List[Tuple[int, str]] = []
     current_lines: List[str] = []
+    current_page: Optional[int] = None
+    section_start_page: Optional[int] = None
 
     for raw_line in text.split("\n"):
+        pm = _PAGE_MARKER_RE.match(raw_line)
+        if pm:
+            current_page = int(pm.group(1))
+            continue  # marker is metadata, not content
+
         m = _HEADING_RE.match(raw_line)
         if m:
             # Flush previous section only when it has actual text content.
@@ -145,8 +157,9 @@ def chunk_text(
             # are skipped — the parent heading is carried in the breadcrumb of
             # the child section via heading_stack.
             if any(line.strip() for line in current_lines):
-                sections.append((list(heading_stack), list(current_lines)))
+                sections.append((list(heading_stack), list(current_lines), section_start_page))
             current_lines = []
+            section_start_page = current_page  # new section begins at current page
             level = len(m.group(1))
             title = m.group(2).strip()
             # Pop headings at the same or deeper level, then push new heading
@@ -157,14 +170,14 @@ def chunk_text(
 
     # Flush last section
     if current_lines:
-        sections.append((list(heading_stack), list(current_lines)))
+        sections.append((list(heading_stack), list(current_lines), section_start_page))
 
     # ------------------------------------------------------------------
     # Step 2 — Convert sections to chunks
     # ------------------------------------------------------------------
-    chunks: List[str] = []
+    chunks: List[Tuple[str, Optional[int]]] = []
 
-    for h_stack, lines in sections:
+    for h_stack, lines, start_page in sections:
         bc = _breadcrumb(h_stack)
         content = "\n".join(lines).strip()
 
@@ -177,7 +190,7 @@ def chunk_text(
 
         # Happy path: entire section fits in one chunk
         if _tok(full_text) <= chunk_size:
-            chunks.append(full_text)
+            chunks.append((full_text, start_page))
             continue
 
         # Section too large — split at unit boundaries
@@ -191,7 +204,7 @@ def chunk_text(
             # Edge case: single unit exceeds budget → hard token-split
             if unit_tokens > chunk_size - prefix_tokens:
                 if buf:
-                    chunks.append(f"{prefix}{chr(10).join(buf).strip()}")
+                    chunks.append((f"{prefix}{chr(10).join(buf).strip()}", start_page))
                     buf = _overlap_tail(buf, overlap)
                     buf_tokens = prefix_tokens + sum(_tok(u) + 1 for u in buf)
 
@@ -202,7 +215,7 @@ def chunk_text(
                     slice_enc = encoded[:budget]
                     encoded = encoded[max(0, budget - overlap):]
                     decoded = enc.decode(slice_enc)
-                    chunks.append(f"{prefix}{decoded}")
+                    chunks.append((f"{prefix}{decoded}", start_page))
                     if len(encoded) <= overlap:
                         break
                 buf = []
@@ -211,7 +224,7 @@ def chunk_text(
 
             # Normal case: flush buffer when it would overflow
             if buf_tokens + unit_tokens > chunk_size and buf:
-                chunks.append(f"{prefix}{chr(10).join(buf).strip()}")
+                chunks.append((f"{prefix}{chr(10).join(buf).strip()}", start_page))
                 buf = _overlap_tail(buf, overlap)
                 buf_tokens = prefix_tokens + sum(_tok(u) + 1 for u in buf)
 
@@ -223,9 +236,9 @@ def chunk_text(
         if buf:
             tail = "\n".join(buf).strip()
             if tail:
-                chunks.append(f"{prefix}{tail}")
+                chunks.append((f"{prefix}{tail}", start_page))
 
-    return [c for c in chunks if c.strip()]
+    return [(c, p) for c, p in chunks if c.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -266,48 +279,6 @@ def should_use_image_retrieval(query: str, image_mode: str) -> bool:
     return any(keyword in q for keyword in IMAGE_QUERY_KEYWORDS)
 
 
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
-    """Split text into chunks, preferring paragraph boundaries."""
-    if not text or not text.strip():
-        return []
-
-    paragraphs = text.split("\n\n")
-    chunks: List[str] = []
-    current = ""
-
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
-            continue
-
-        if len(current) + len(para) + 2 <= chunk_size:
-            current = current + "\n\n" + para if current else para
-        else:
-            if current:
-                chunks.append(current)
-            # If paragraph itself is too long, hard-split it
-            if len(para) > chunk_size:
-                while para:
-                    chunks.append(para[:chunk_size])
-                    para = para[max(0, chunk_size - overlap):]
-                    if len(para) <= overlap:
-                        break
-                current = ""
-            else:
-                # Start new chunk with overlap from previous
-                if chunks and overlap > 0:
-                    prev = chunks[-1]
-                    overlap_text = prev[-overlap:] if len(prev) > overlap else prev
-                    current = overlap_text + "\n\n" + para
-                else:
-                    current = para
-
-    if current:
-        chunks.append(current)
-
-    return chunks
-
-
 async def generate_embeddings(texts: List[str]) -> List[List[float]]:
     """Generate embeddings via OpenAI API."""
     api_key = providers_mod.get_api_key("openai")
@@ -342,20 +313,21 @@ def _estimate_tokens(text: str) -> int:
 
 async def process_document(document_id: str, text: str, user_id: str) -> Tuple[int, int]:
     """Chunk text, generate embeddings, store in DB. Returns (chunk_count, total_tokens)."""
-    chunks = chunk_text(text)
-    if not chunks:
+    chunk_pairs = chunk_text(text)  # List[Tuple[str, Optional[int]]]
+    if not chunk_pairs:
         documents_mod.update_document_status(document_id, "error", error_message="No text extracted")
         return 0, 0
 
+    chunk_texts_only = [c for c, _ in chunk_pairs]
     try:
-        embeddings = await generate_embeddings(chunks)
+        embeddings = await generate_embeddings(chunk_texts_only)
     except Exception as e:
         documents_mod.update_document_status(document_id, "error", error_message=str(e))
         raise
 
     total_tokens = 0
     rows = []
-    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+    for i, ((chunk, page_num), embedding) in enumerate(zip(chunk_pairs, embeddings)):
         token_count = _estimate_tokens(chunk)
         total_tokens += token_count
         rows.append({
@@ -363,13 +335,14 @@ async def process_document(document_id: str, text: str, user_id: str) -> Tuple[i
             "chunk_index": i,
             "content": chunk,
             "token_count": token_count,
+            "page_number": page_num,
             "embedding": str(embedding),
         })
 
     # Batch insert chunks
     supabase.table("app_document_chunks").insert(rows).execute()
 
-    documents_mod.update_document_status(document_id, "ready", chunk_count=len(chunks))
+    documents_mod.update_document_status(document_id, "ready", chunk_count=len(chunk_pairs))
 
     # Record embedding token usage
     record_usage(
@@ -381,7 +354,7 @@ async def process_document(document_id: str, text: str, user_id: str) -> Tuple[i
         completion_tokens=0,
     )
 
-    return len(chunks), total_tokens
+    return len(chunk_pairs), total_tokens
 
 
 def _rpc_chunks(

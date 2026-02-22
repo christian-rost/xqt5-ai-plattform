@@ -579,6 +579,7 @@ async def send_message(
                     "similarity": round(c["similarity"], 3),
                     "excerpt": _make_excerpt(c.get("content", "")),
                     "chunk_index": c.get("chunk_index", 0),
+                    "page_number": c.get("page_number"),
                 }
                 for c in chunks
             ]
@@ -1860,6 +1861,7 @@ async def send_pool_message(
                     "similarity": round(c["similarity"], 3),
                     "excerpt": _make_excerpt(c.get("content", "")),
                     "chunk_index": c.get("chunk_index", 0),
+                    "page_number": c.get("page_number"),
                 }
                 for c in chunks
             ]

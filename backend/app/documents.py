@@ -255,7 +255,8 @@ def _build_extracted_markdown(pages: List[Dict[str, Any]], response_data: Option
     for page in sorted_pages:
         markdown = _page_markdown_with_image_refs(page, _extract_page_markdown(page))
         if markdown:
-            page_blocks.append(markdown)
+            page_num = (_safe_int(page.get("index")) or 0) + 1
+            page_blocks.append(f"<!-- page:{page_num} -->\n{markdown}")
 
     if page_blocks:
         # Keep OCR markdown structure as-is for better retrieval quality.

@@ -35,7 +35,7 @@ export default function SourceDisplay({ sources, imageSources }) {
                     onClick={() => s.excerpt && toggle(fn)}
                     title={`Relevanz: ${Math.round((s.similarity || 0) * 100)}%`}
                   >
-                    {fn}
+                    {fn}{s.page_number ? ` (S. ${s.page_number})` : ''}
                     {s.excerpt && (
                       <span className="source-tag-chevron">{isOpen ? '▲' : '▼'}</span>
                     )}
