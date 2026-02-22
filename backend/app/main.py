@@ -1171,7 +1171,7 @@ async def admin_update_rag_settings(
         "admin.rag_settings.update",
         user_id=admin["id"],
         target_type="rag_settings",
-        target_id="rag_settings",
+        target_id=None,
         metadata=updates,
     )
     return settings

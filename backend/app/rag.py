@@ -306,6 +306,7 @@ async def generate_embeddings(texts: List[str]) -> List[List[float]]:
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         body = {"model": EMBEDDING_MODEL, "input": texts, "dimensions": EMBEDDING_DIMENSIONS}
 
+    logger.info("Generating embeddings via provider=%s (n=%d)", provider, len(texts))
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(url, headers=headers, json=body)
         if resp.status_code != 200:
@@ -354,11 +355,13 @@ async def process_document(document_id: str, text: str, user_id: str) -> Tuple[i
     documents_mod.update_document_status(document_id, "ready", chunk_count=len(chunk_pairs))
 
     # Record embedding token usage
+    from . import admin as admin_crud  # noqa: PLC0415
+    _embedding_provider = admin_crud.get_rag_settings().get("embedding_provider", "openai")
     record_usage(
         user_id=user_id,
         chat_id=None,
         model=EMBEDDING_MODEL,
-        provider="openai",
+        provider=_embedding_provider,
         prompt_tokens=total_tokens,
         completion_tokens=0,
     )
