@@ -10,7 +10,7 @@ Nach diesem Quickstart kannst du:
 1. dich anmelden
 2. einen Chat starten
 3. ein Dokument hochladen
-4. eine RAG-gestuetzte Antwort mit Quellen erhalten
+4. eine RAG-gestuetzte Antwort mit Quellen und Zitaten erhalten
 5. optional in einem Pool mit anderen zusammenarbeiten
 
 ## 2. Schnellueberblick
@@ -19,9 +19,9 @@ Nach diesem Quickstart kannst du:
 flowchart LR
     A["Login"] --> B["Neuen Chat erstellen"]
     B --> C["Modell waehlen"]
-    C --> D["Dokument hochladen (PDF/TXT/Bild)"]
+    C --> D["Dokument hochladen"]
     D --> E["Frage stellen"]
-    E --> F["Antwort mit Quellen + Zitaten"]
+    E --> F["Antwort + Zitate pruefen"]
 ```
 
 ## 3. Schritt-fuer-Schritt
@@ -43,8 +43,8 @@ flowchart LR
 ### Schritt 3: Dokument hinzufuegen (RAG)
 
 1. Lade eine Datei hoch (`.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`).
-2. Ein Fortschrittsbalken zeigt den Upload-Status an (zuerst Datei-Transfer, dann OCR-Verarbeitung).
-3. Nach der Verarbeitung erscheint unter dem Dateinamen automatisch eine kurze Zusammenfassung des Inhalts.
+2. Ein Fortschrittsbalken zeigt den Upload-Status an (Datei-Transfer → OCR-Verarbeitung).
+3. Nach der Verarbeitung erscheint unter dem Dateinamen automatisch eine kurze Zusammenfassung.
 4. Warte bis der Status "ready" angezeigt wird.
 5. Stelle dann eine konkrete Frage zum Inhalt.
 
@@ -52,7 +52,7 @@ Beispiel:
 - "Fasse Kapitel 3 in 5 Stichpunkten zusammen."
 - "Welche Risiken werden im Dokument genannt?"
 
-### Schritt 4: Antwort pruefen
+### Schritt 4: Antwort und Quellen pruefen
 
 1. Pruefe die Antwort.
 2. Unter der Antwort werden Quellen angezeigt — mit Dateiname und Seitenzahl (z. B. "Bericht.pdf (S. 4)").
@@ -84,47 +84,31 @@ Pools sind geteilte Wissensraeume mit Rollen.
 ```mermaid
 flowchart TD
     A["Pool erstellen/oeffnen"] --> B["Mitglieder hinzufuegen"]
-    B --> C["Dokumente in Pool hochladen"]
-    C --> D["Automatische Zusammenfassung erscheint"]
+    B --> C["Dokumente hochladen"]
+    C --> D["Zusammenfassung in Dokumentliste pruefen"]
     D --> E["Shared Chat (Team)"]
     D --> F["Private Chat (individuell)"]
 ```
 
 Pool-Rollen:
-- Viewer: lesen + fragen
-- Editor: zusaetzlich Dokumente verwalten (Datei-Upload oder Text einfuegen)
-- Admin: zusaetzlich Mitglieder/Einladungen verwalten
-- Owner: Pool-Besitzer
+- **Viewer**: lesen + fragen
+- **Editor**: zusaetzlich Dokumente verwalten (Datei-Upload oder Text einfuegen)
+- **Admin**: zusaetzlich Mitglieder und Einladungen verwalten
+- **Owner**: Pool-Besitzer
 
-Tipp: Statt eine Datei hochzuladen kannst du im Pool-Dokumenttab auch direkt Text einfuegen
-("Text einfuegen"-Button). Der Text wird genauso verarbeitet wie eine hochgeladene Datei.
-
-Dokument-Vorschau im Pool:
-1. Oeffne im Pool den Tab "Dokumente".
-2. In der Dokumentliste siehst du unter jedem Dateinamen die automatische Zusammenfassung.
-3. Klicke bei einem Dokument auf "Vorschau".
-4. Im Modal siehst du:
-   - Zusammenfassung des Dokuments
-   - bei PDF/TXT: Textvorschau
-   - bei Bildern: Bildansicht (plus ggf. Text)
-5. Bei sehr langen Inhalten wird die Vorschau gekuerzt angezeigt.
+Tipps:
+- Statt eine Datei hochzuladen kannst du im Pool-Dokumenttab auch direkt Text einfuegen ("Text einfuegen"-Button). Der Text wird genauso verarbeitet wie eine hochgeladene Datei.
+- In der Dokumentliste siehst du unter jedem Dateinamen die automatische Zusammenfassung.
+- Klicke auf "Vorschau", um die vollstaendige Zusammenfassung und einen Textauszug des Dokuments zu sehen.
 
 ## 7. Wenn etwas nicht funktioniert
 
-- Kein Modell sichtbar:
-  - Admin muss Modell/Provider aktivieren.
-- Dokumentverarbeitung schlaegt fehl:
-  - Dateityp pruefen (`PDF/TXT/Bild`), Datei ggf. kleiner machen.
-- Keine Quellen bei Antwort:
-  - pruefen, ob Dokumentstatus "ready" ist.
-- Keine Seitenzahl in Zitaten:
-  - Dokument muss nach der aktuellen Migration hochgeladen oder neu gechunkt worden sein.
-- Keine automatische Zusammenfassung:
-  - Zusammenfassung erfordert ein konfiguriertes Standard-Modell; ggf. Admin kontaktieren.
-- Keine/zu kurze Vorschau im Pool:
-  - Vorschau zeigt Textauszug; bei sehr langen Dokumenten ist sie gekuerzt.
-- Login/Session bricht ab:
-  - ggf. neu einloggen (Token wurde evtl. invalidiert).
+- **Kein Modell sichtbar**: Admin muss Modell/Provider aktivieren.
+- **Dokumentverarbeitung schlaegt fehl**: Dateityp pruefen (`PDF/TXT/Bild`), Datei ggf. kleiner machen.
+- **Keine Quellen bei Antwort**: pruefen, ob Dokumentstatus "ready" ist.
+- **Keine/zu kurze Vorschau**: Vorschau zeigt Textauszug; bei sehr langen Dokumenten ist sie gekuerzt.
+- **Login/Session bricht ab**: ggf. neu einloggen (Token wurde evtl. invalidiert).
+- **Keine Zusammenfassung oder Seitenzahl**: bitte Admin kontaktieren.
 
 ## 8. Empfohlener Standard-Workflow
 
