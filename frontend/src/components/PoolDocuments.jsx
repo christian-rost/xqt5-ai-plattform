@@ -38,6 +38,7 @@ export default function PoolDocuments({ poolId, documents, canEdit, onUpload, on
     setPreviewDoc({
       filename: doc.filename,
       file_type: doc.file_type,
+      summary: doc.summary || '',
       text_preview: '',
       truncated: false,
       text_length: 0,
@@ -152,6 +153,9 @@ export default function PoolDocuments({ poolId, documents, canEdit, onUpload, on
               </span>
               <div className="pool-doc-info">
                 <span className="pool-doc-name">{doc.filename}</span>
+                {doc.summary && (
+                  <span className="pool-doc-summary">{doc.summary}</span>
+                )}
                 <span className="pool-doc-meta">
                   {doc.status === 'ready' && `${doc.chunk_count} Chunks`}
                   {doc.status === 'processing' && 'Verarbeitung...'}
@@ -199,6 +203,9 @@ export default function PoolDocuments({ poolId, documents, canEdit, onUpload, on
               {!previewLoading && previewError && <p className="pool-preview-error">{previewError}</p>}
               {!previewLoading && !previewError && (
                 <>
+                  {previewDoc.summary && (
+                    <blockquote className="pool-preview-summary">{previewDoc.summary}</blockquote>
+                  )}
                   {previewDoc.image_data_url && (
                     <img
                       src={previewDoc.image_data_url}

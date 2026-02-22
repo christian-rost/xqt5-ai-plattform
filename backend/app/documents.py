@@ -585,6 +585,10 @@ def create_document(
     return result.data[0]
 
 
+def update_document_summary(document_id: str, summary: str) -> None:
+    supabase.table("app_documents").update({"summary": summary}).eq("id", document_id).execute()
+
+
 def update_document_status(
     document_id: str,
     status: str,
@@ -604,7 +608,7 @@ def list_documents(
 ) -> List[Dict[str, Any]]:
     """List documents. scope: 'chat' (only chat_id), 'global' (chat_id IS NULL), 'all' (both)."""
     query = supabase.table("app_documents").select(
-        "id,filename,file_type,file_size_bytes,chunk_count,status,error_message,chat_id,created_at"
+        "id,filename,file_type,file_size_bytes,chunk_count,status,error_message,chat_id,summary,created_at"
     ).eq("user_id", user_id).is_("pool_id", "null")
 
     if scope == "chat" and chat_id:

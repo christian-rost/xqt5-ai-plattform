@@ -483,6 +483,33 @@ def _make_excerpt(content: str) -> str:
     return text
 
 
+async def _summarize_document(extracted_text: str, filename: str) -> Optional[str]:
+    """Generate a 2-3 sentence summary of a document using the default LLM."""
+    try:
+        # Strip page markers, truncate to ~6000 chars for the prompt
+        clean_text = re.sub(r"<!-- page:\d+ -->\n?", "", extracted_text).strip()[:6000]
+        if not clean_text:
+            return None
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    "Fasse den folgenden Dokumentinhalt in 2-3 prägnanten Sätzen auf Deutsch zusammen. "
+                    "Antworte NUR mit der Zusammenfassung, ohne Einleitung oder Kommentar.\n\n"
+                    f"Dateiname: {filename}\n\n"
+                    f"{clean_text}"
+                ),
+            }
+        ]
+        model = admin_crud.get_default_model_id() or DEFAULT_MODEL
+        result = await call_llm(messages, model, temperature=0.3)
+        summary = result["content"].strip()[:600]
+        return summary or None
+    except Exception as e:
+        logger.warning("Document summary generation failed for %s: %s", filename, e)
+        return None
+
+
 async def _auto_name_conversation(conversation_id: str, user_message: str) -> None:
     """Generate a short title for the conversation using the LLM."""
     try:
@@ -1022,6 +1049,11 @@ async def upload_document(
                     doc["asset_count"] = asset_count
             except Exception as e:
                 logger.warning("OCR asset indexing failed for %s: %s", doc["id"], e)
+
+        summary = await _summarize_document(extracted_text, file.filename)
+        if summary:
+            documents_mod.update_document_summary(doc["id"], summary)
+            doc["summary"] = summary
     except Exception as e:
         logger.error(f"RAG processing failed for {doc['id']}: {e}")
         doc["status"] = "error"
@@ -1667,6 +1699,11 @@ async def upload_pool_document(
                     doc["asset_count"] = asset_count
             except Exception as e:
                 logger.warning("Pool OCR asset indexing failed for %s: %s", doc["id"], e)
+
+        summary = await _summarize_document(extracted_text, file.filename)
+        if summary:
+            documents_mod.update_document_summary(doc["id"], summary)
+            doc["summary"] = summary
     except Exception as e:
         logger.error(f"RAG processing failed for pool doc {doc['id']}: {e}")
         doc["status"] = "error"

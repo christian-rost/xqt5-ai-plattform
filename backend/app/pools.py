@@ -323,7 +323,7 @@ def list_pool_documents(pool_id: str) -> List[Dict[str, Any]]:
     result = (
         supabase.table("app_documents")
         .select(
-            "id,filename,file_type,file_size_bytes,chunk_count,status,error_message,user_id,created_at"
+            "id,filename,file_type,file_size_bytes,chunk_count,status,error_message,user_id,summary,created_at"
         )
         .eq("pool_id", pool_id)
         .order("created_at", desc=True)

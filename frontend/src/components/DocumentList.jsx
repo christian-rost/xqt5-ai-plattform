@@ -7,7 +7,7 @@ export default function DocumentList({ documents, onDelete }) {
         <span
           key={doc.id}
           className={`document-item doc-status-${doc.status}`}
-          title={doc.error_message || `${doc.chunk_count} chunks`}
+          title={doc.error_message || doc.summary || `${doc.chunk_count} chunks`}
         >
           <span className="doc-icon">
             {doc.file_type === 'pdf' ? '\u{1F4C4}' : (doc.file_type === 'image' ? '\u{1F5BC}\u{FE0F}' : '\u{1F4DD}')}
