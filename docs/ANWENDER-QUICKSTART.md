@@ -21,7 +21,7 @@ flowchart LR
     B --> C["Modell waehlen"]
     C --> D["Dokument hochladen (PDF/TXT/Bild)"]
     D --> E["Frage stellen"]
-    E --> F["Antwort mit Quellen"]
+    E --> F["Antwort mit Quellen + Zitaten"]
 ```
 
 ## 3. Schritt-fuer-Schritt
@@ -44,8 +44,9 @@ flowchart LR
 
 1. Lade eine Datei hoch (`.pdf`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`).
 2. Ein Fortschrittsbalken zeigt den Upload-Status an (zuerst Datei-Transfer, dann OCR-Verarbeitung).
-3. Warte bis der Status "ready" angezeigt wird.
-4. Stelle dann eine konkrete Frage zum Inhalt.
+3. Nach der Verarbeitung erscheint unter dem Dateinamen automatisch eine kurze Zusammenfassung des Inhalts.
+4. Warte bis der Status "ready" angezeigt wird.
+5. Stelle dann eine konkrete Frage zum Inhalt.
 
 Beispiel:
 - "Fasse Kapitel 3 in 5 Stichpunkten zusammen."
@@ -54,8 +55,9 @@ Beispiel:
 ### Schritt 4: Antwort pruefen
 
 1. Pruefe die Antwort.
-2. Nutze die angezeigten Quellenhinweise fuer Nachvollziehbarkeit.
-3. Verfeinere die Frage bei Bedarf (z. B. engeren Fokus setzen).
+2. Unter der Antwort werden Quellen angezeigt — mit Dateiname und Seitenzahl (z. B. "Bericht.pdf (S. 4)").
+3. Klicke auf eine Quelle, um den genauen Textauszug aufzuklappen (Zitatmodus).
+4. Verfeinere die Frage bei Bedarf (z. B. engeren Fokus setzen).
 
 ## 4. Optional: Mit Assistenten schneller arbeiten
 
@@ -83,8 +85,9 @@ Pools sind geteilte Wissensraeume mit Rollen.
 flowchart TD
     A["Pool erstellen/oeffnen"] --> B["Mitglieder hinzufuegen"]
     B --> C["Dokumente in Pool hochladen"]
-    C --> D["Shared Chat (Team)"]
-    C --> E["Private Chat (individuell)"]
+    C --> D["Automatische Zusammenfassung erscheint"]
+    D --> E["Shared Chat (Team)"]
+    D --> F["Private Chat (individuell)"]
 ```
 
 Pool-Rollen:
@@ -96,13 +99,15 @@ Pool-Rollen:
 Tipp: Statt eine Datei hochzuladen kannst du im Pool-Dokumenttab auch direkt Text einfuegen
 ("Text einfuegen"-Button). Der Text wird genauso verarbeitet wie eine hochgeladene Datei.
 
-PoolsViewer (aktueller Stand):
+Dokument-Vorschau im Pool:
 1. Oeffne im Pool den Tab "Dokumente".
-2. Klicke bei einem Dokument auf "Vorschau".
-3. Im Modal siehst du:
+2. In der Dokumentliste siehst du unter jedem Dateinamen die automatische Zusammenfassung.
+3. Klicke bei einem Dokument auf "Vorschau".
+4. Im Modal siehst du:
+   - Zusammenfassung des Dokuments
    - bei PDF/TXT: Textvorschau
    - bei Bildern: Bildansicht (plus ggf. Text)
-4. Bei sehr langen Inhalten wird die Vorschau gekuerzt angezeigt.
+5. Bei sehr langen Inhalten wird die Vorschau gekuerzt angezeigt.
 
 ## 7. Wenn etwas nicht funktioniert
 
@@ -112,6 +117,10 @@ PoolsViewer (aktueller Stand):
   - Dateityp pruefen (`PDF/TXT/Bild`), Datei ggf. kleiner machen.
 - Keine Quellen bei Antwort:
   - pruefen, ob Dokumentstatus "ready" ist.
+- Keine Seitenzahl in Zitaten:
+  - Dokument muss nach der aktuellen Migration hochgeladen oder neu gechunkt worden sein.
+- Keine automatische Zusammenfassung:
+  - Zusammenfassung erfordert ein konfiguriertes Standard-Modell; ggf. Admin kontaktieren.
 - Keine/zu kurze Vorschau im Pool:
   - Vorschau zeigt Textauszug; bei sehr langen Dokumenten ist sie gekuerzt.
 - Login/Session bricht ab:
@@ -120,9 +129,9 @@ PoolsViewer (aktueller Stand):
 ## 8. Empfohlener Standard-Workflow
 
 1. Chat erstellen
-2. Relevante Dokumente hochladen
+2. Relevante Dokumente hochladen (Zusammenfassung pruefen)
 3. Frage mit klarem Ziel stellen
-4. Quellen pruefen
+4. Quellen und Zitate pruefen
 5. Ergebnis iterativ verfeinern
 
 Damit erreichst du in der Regel die beste Balance aus Geschwindigkeit und Qualitaet.
