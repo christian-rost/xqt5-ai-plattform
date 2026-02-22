@@ -141,6 +141,8 @@ class UpdateRagSettingsRequest(BaseModel):
     rerank_candidates: Optional[int] = Field(default=None, ge=5, le=100)
     rerank_top_n: Optional[int] = Field(default=None, ge=1, le=30)
     rerank_model: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_deployment: Optional[str] = None
 
 
 # Pool models
