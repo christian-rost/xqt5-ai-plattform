@@ -464,7 +464,7 @@ def get_pool_chat(chat_id: str) -> Optional[Dict[str, Any]]:
     )
     chat["messages"] = msg_result.data or []
 
-    # Enrich messages with username
+    # Enrich messages with username and map rag_sources → sources
     user_cache = {}
     for msg in chat["messages"]:
         uid = msg.get("user_id")
@@ -473,6 +473,8 @@ def get_pool_chat(chat_id: str) -> Optional[Dict[str, Any]]:
             user_cache[uid] = u.data[0]["username"] if u.data else "Unknown"
         if uid:
             msg["username"] = user_cache.get(uid, "Unknown")
+        if msg.get("rag_sources"):
+            msg["sources"] = msg["rag_sources"]
 
     return chat
 
@@ -483,8 +485,9 @@ def add_pool_chat_message(
     content: str,
     user_id: Optional[str] = None,
     model: Optional[str] = None,
+    rag_sources: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    row = {
+    row: Dict[str, Any] = {
         "chat_id": chat_id,
         "role": role,
         "content": content,
@@ -493,6 +496,8 @@ def add_pool_chat_message(
         row["user_id"] = user_id
     if model:
         row["model"] = model
+    if rag_sources:
+        row["rag_sources"] = rag_sources
     result = supabase.table("pool_chat_messages").insert(row).execute()
     return result.data[0]
 

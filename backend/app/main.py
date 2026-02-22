@@ -782,8 +782,8 @@ async def _stream_response(
                 full_content += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
 
-        # Store the complete assistant message
-        storage.add_assistant_message(conversation_id, full_content, model=model)
+        # Store the complete assistant message (with RAG sources for persistence)
+        storage.add_assistant_message(conversation_id, full_content, model=model, rag_sources=rag_sources or None)
 
         # Record token usage
         if usage:
@@ -2027,7 +2027,7 @@ async def _stream_pool_response(
                 full_content += chunk
                 yield f"data: {json.dumps({'delta': chunk})}\n\n"
 
-        pools_mod.add_pool_chat_message(chat_id, "assistant", full_content, model=model)
+        pools_mod.add_pool_chat_message(chat_id, "assistant", full_content, model=model, rag_sources=rag_sources or None)
 
         if usage:
             provider, _ = parse_model_string(model)

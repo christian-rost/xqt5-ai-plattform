@@ -75,6 +75,7 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
             "role": msg["role"],
             "content": msg["content"],
             "model": msg.get("model"),
+            "sources": msg.get("rag_sources") or None,
         })
 
     return {
@@ -98,6 +99,7 @@ def add_assistant_message(
     conversation_id: str,
     content: str,
     model: Optional[str] = None,
+    rag_sources: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     payload: Dict[str, Any] = {
         "chat_id": conversation_id,
@@ -106,6 +108,8 @@ def add_assistant_message(
     }
     if model:
         payload["model"] = model
+    if rag_sources:
+        payload["rag_sources"] = rag_sources
 
     supabase.table("chat_messages").insert(payload).execute()
 
