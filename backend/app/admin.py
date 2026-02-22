@@ -80,21 +80,23 @@ def get_detailed_usage(
     for entry in by_provider:
         entry["estimated_cost"] = round(entry["estimated_cost"], 4)
 
-    # By model
-    by_model_map: Dict[str, Dict[str, Any]] = {}
+    # By model — key is (model, provider) to distinguish same model across providers
+    by_model_map: Dict[tuple, Dict[str, Any]] = {}
     for r in rows:
         m = r.get("model", "unknown")
-        if m not in by_model_map:
-            by_model_map[m] = {
+        p = r.get("provider", "unknown")
+        key = (m, p)
+        if key not in by_model_map:
+            by_model_map[key] = {
                 "model": m,
-                "provider": r.get("provider", "unknown"),
+                "provider": p,
                 "requests": 0,
                 "tokens": 0,
                 "estimated_cost": 0.0,
             }
-        by_model_map[m]["requests"] += 1
-        by_model_map[m]["tokens"] += r["total_tokens"]
-        by_model_map[m]["estimated_cost"] += float(r["estimated_cost"])
+        by_model_map[key]["requests"] += 1
+        by_model_map[key]["tokens"] += r["total_tokens"]
+        by_model_map[key]["estimated_cost"] += float(r["estimated_cost"])
     by_model = sorted(by_model_map.values(), key=lambda x: x["estimated_cost"], reverse=True)
     for entry in by_model:
         entry["avg_tokens"] = round(entry["tokens"] / entry["requests"]) if entry["requests"] else 0
