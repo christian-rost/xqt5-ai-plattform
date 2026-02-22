@@ -178,6 +178,49 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   - `uploadWithXhr()` Helper in `api.js` kapselt Auth-Header-Handling (liest Token aus localStorage).
   **Regel: Für Upload-Progress immer XHR verwenden, nicht fetch.**
 
+### 2026-02-22 (RAGplus — Embedding-Provider, Auto-Summary, Bugfixes)
+
+- **Fehler: Embedding-Provider-Auswahl — UI sprang nach Speichern auf OpenAI zurück.**
+  Ursache: `UpdateRagSettingsRequest` in `models.py` fehlten die Felder `embedding_provider` und `embedding_deployment`. Pydantic ignorierte die eingehenden Werte beim Deserialisieren (kein Validierungsfehler — stille Verdrängung), `model_dump(exclude_none=True)` lieferte nur die bekannten Felder zurück.
+  Korrektur: Beide Felder als `Optional[str] = None` in `UpdateRagSettingsRequest` ergänzt.
+  **Regel: Bei neuen Settings-Feldern immer auch das Pydantic-Request-Model aktualisieren — sonst werden Felder vom Client still ignoriert.**
+
+- **Fehler: `logger.info()` Aufrufe wurden nicht ausgegeben.**
+  Ursache: Ohne expliziten `logging.basicConfig()`-Aufruf nutzt Python den "Last Resort Handler", der nur `WARNING` und höher ausgibt. `logger.info(...)` in `rag.py` und `main.py` verschwanden lautlos.
+  Korrektur: `logging.basicConfig(level=logging.INFO)` am Anfang von `main.py` ergänzt.
+  **Regel: In FastAPI-Apps immer explizit `logging.basicConfig(level=logging.INFO)` setzen, sonst sind INFO-Logs unsichtbar.**
+
+- **Fehler: Audit-Log-Aufruf mit `target_id="rag_settings"` — kein valides UUID.**
+  Ursache: `audit.log_event(..., target_id="rag_settings")` übergab einen String wo ein UUID erwartet wurde, was zu einem DB-Insert-Fehler führte.
+  Korrektur: `target_id=None` für Settings-Änderungen ohne konkretes Datenobjekt.
+  **Regel: `target_id` in Audit-Logs ist ein UUID — bei Systemkonfigurationen `None` übergeben.**
+
+- **Fehler: Kosten-Dashboard zeigte Azure OpenAI Embeddings unter "openai".**
+  Ursache: `get_detailed_usage()` in `admin.py` gruppierte Einträge nur nach `model`-Name. Zwei Einträge mit gleichem Modellnamen aber unterschiedlichen Providern (z. B. `text-embedding-3-small` via OpenAI vs. Azure) wurden zusammengefasst.
+  Korrektur: Gruppierungsschlüssel auf `(model, provider)` Tuple geändert.
+  **Regel: Kosten-Gruppierung immer nach `(model, provider)` — gleiche Modellnamen bei verschiedenen Providern sind unterschiedliche Kostenstellen.**
+
+- **Fehler: Provider-Spalte im Kosten-Tracking zeigte immer "openai" für Embeddings.**
+  Ursache: `process_document()` in `rag.py` rief `record_usage(..., provider="openai")` mit hardcoded Provider auf, unabhängig vom konfigurierten Embedding-Provider.
+  Korrektur: Provider wird aus `admin_crud.get_rag_settings()["embedding_provider"]` gelesen und dynamisch übergeben.
+  **Regel: Provider für Usage-Tracking nie hardcoden — immer aus der aktuellen Konfiguration lesen.**
+
+- **Fehler: `name 're' is not defined` bei Auto-Summary.**
+  Ursache: `_summarize_document()` in `main.py` nutzte `re.sub()` zum Entfernen von `<!-- page:N -->`-Markern, aber `import re` fehlte in der Datei.
+  Korrektur: `import re` zu den Imports in `main.py` ergänzt.
+  **Regel: Beim Hinzufügen neuer Funktionen die Import-Liste der Datei prüfen.**
+
+- **Fehler: RAG-Zitate verschwanden nach Navigation weg und zurück.**
+  Ursache: `rag_sources` wurden nur im SSE-Stream (`done`-Event) an das Frontend gesendet, aber nie in der Datenbank gespeichert. `storage.add_assistant_message()` und `pools.add_pool_chat_message()` hatten keinen `rag_sources`-Parameter. Beim erneuten Laden einer Konversation aus der API kamen Nachrichten ohne `sources`-Feld zurück — alle Zitate fehlten.
+  Korrektur:
+  - Migration `20260226_rag_sources_persistence.sql`: `rag_sources JSONB` Spalte in `chat_messages` und `pool_chat_messages`
+  - `storage.add_assistant_message()`: neuer Parameter `rag_sources`, wird bei Vorhandensein in DB gespeichert
+  - `storage.get_conversation()`: `sources: msg.get("rag_sources")` in Message-Dict aufgenommen
+  - `pools.add_pool_chat_message()`: analog, `rag_sources` Spalte befüllt
+  - `pools.get_pool_chat()`: DB-Feld `rag_sources` → `sources` gemappt (Frontend-Konvention)
+  - `main._stream_response()` und `_stream_pool_response()`: `rag_sources` an die jeweilige Speicher-Funktion übergeben
+  **Regel: Alle Daten, die nach einem Session-Reload oder einer Navigation sichtbar sein sollen, müssen in der DB persistiert werden — SSE-Events sind flüchtig.**
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).
@@ -194,3 +237,6 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
 8. **Token-Invalidierung**: Bei sicherheitskritischen User-Änderungen (Deaktivierung, Passwort-Reset) immer `bump_token_version()` aufrufen, damit alle bestehenden Tokens sofort ungültig werden.
 9. **SQL-Funktionsänderungen**: Bei Parameteränderungen immer `DROP FUNCTION IF EXISTS old_signature` vor `CREATE OR REPLACE`. Sonst PGRST203 Function Overload Ambiguity.
 10. **Nullable RPC-Parameter**: Nie als `null` senden — komplett weglassen wenn nicht relevant (PostgreSQL `col = NULL` → UNKNOWN, nicht TRUE).
+11. **SSE-Daten sind flüchtig**: Alle Daten, die nach Navigation/Reload sichtbar bleiben sollen (Quellen, Zitate, Metadaten), müssen in der DB gespeichert werden — nicht nur im Stream-Event.
+12. **Pydantic-Request-Models vollständig halten**: Bei neuen Settings-Feldern sofort auch das zugehörige Request-Model aktualisieren. Fehlende Felder werden still ignoriert, kein Validierungsfehler tritt auf.
+13. **Logging immer initialisieren**: `logging.basicConfig(level=logging.INFO)` am Anfang von `main.py` — ohne das sind alle `logger.info()`-Aufrufe im gesamten Projekt unsichtbar.
