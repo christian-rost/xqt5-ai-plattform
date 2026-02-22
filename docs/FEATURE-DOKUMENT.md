@@ -77,6 +77,7 @@ Eine Enterprise-fähige AI-Hub-Plattform mit Multi-LLM-Orchestrierung, zentralem
 2. Selbstschutz: Admin kann sich nicht selbst löschen
 3. Deaktivierte User standardmäßig ausgeblendet, mit Toggle einblendbar (grau dargestellt)
 4. Default-Modell aus DB (`is_default` in `app_model_config`) wird jetzt vom Frontend respektiert
+
 ## Phase E: Pools — Geteilte Dokumentensammlungen (umgesetzt 2026-02-18)
 Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente ablegen und per Chat RAG-gestützte Fragen dazu stellen können.
 
@@ -133,7 +134,91 @@ Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente able
 9. **Drag-to-Resize Sidebar**: Ziehbarer Divider zwischen Pools und Conversations für individuelle Aufteilung (15-80%)
 10. **Upload-Fortschrittsanzeige**: Echtzeit-Fortschrittsbalken beim Hochladen (File-Transfer % + Server-Processing-Shimmer) — Chat und Pool
 
+### Zitatmodus — Source-Excerpts (umgesetzt 2026-02-22)
+11. **Collapsible Source-Excerpts**: Jede RAG-Quelle zeigt per Klick den relevanten Textauszug (max. 350 Zeichen, Breadcrumb-Prefix entfernt)
+12. **Seitenangabe**: Quellen-Tags zeigen die Seitenzahl des Chunks (`S. 3`) wenn vorhanden
+13. **Breadcrumb-Stripping**: Auszug beginnt direkt mit dem inhaltlichen Text, nicht dem Strukturpfad
+
+### Seitenzahlen in Zitaten (umgesetzt 2026-02-22)
+14. **Page-Marker-Injection**: `<!-- page:N -->` Kommentare werden von `documents.py` vor jeder Seite in den OCR-Text eingefügt
+15. **Chunk-Level Page-Number**: `chunk_text()` parsed die Marker und speichert `page_number` pro Chunk
+16. **DB + RPC**: `app_document_chunks.page_number` Spalte, beide RPCs geben `page_number` zurück
+17. **Frontend**: `SourceDisplay.jsx` zeigt `(S. N)` neben dem Dateinamen
+
+### Embedding-Provider-Auswahl (umgesetzt 2026-02-22)
+18. **Admin-UI**: Retrieval-Tab erlaubt Wahl zwischen OpenAI und Azure OpenAI als Embedding-Provider
+19. **Azure-Embedding**: Nutzt `api-key` Header, Deployment-basierte URL, kein `model`-Feld im Body
+20. **Konfiguration**: Provider + Deployment-Name in `app_runtime_config` (rag_settings JSONB)
+21. **Kostentracking**: `record_usage()` verwendet den tatsächlichen Provider (nicht hardcoded OpenAI)
+
+### Automatische Dokument-Zusammenfassung (umgesetzt 2026-02-22)
+22. **LLM-Zusammenfassung beim Upload**: Nach OCR + Chunking wird automatisch ein LLM-Call abgesetzt (Default-Modell, 2-3 Sätze, Deutsch)
+23. **Speicherung**: `app_documents.summary TEXT` Spalte, befüllt direkt nach Verarbeitung
+24. **Pool-Dokumentliste**: Summary erscheint als 2-zeilig geklammter Text unter dem Dateinamen
+25. **Vorschau-Modal**: Summary als kursives Blockzitat vor dem Volltext
+26. **Chat-Dokumente**: Summary als Tooltip beim Hover über den Dokument-Tag
+27. **Silent-Fail**: Fehler bei der Zusammenfassung blockieren den Upload nicht
+
+---
+
 ## Noch geplant
+
+### Retrieval & Wissensquellen
+
+**Multi-Pool-Retrieval**
+RAG-Suche über mehrere Pools gleichzeitig. Nutzer wählt im Chat welche Pools als Wissensquellen aktiv sind. Ergebnisse werden per RRF über Pool-Grenzen hinweg gerankt. Sinnvoll wenn Wissen thematisch auf mehrere Pools verteilt ist.
+
+**Nextcloud-Import**
+Ordner eines Nextcloud-Accounts als Datenquelle für einen Pool. Dokumente werden per WebDAV abgerufen und automatisch verarbeitet. Synchronisierung kann manuell oder per geplantem Job ausgelöst werden.
+
+**SharePoint / OneDrive-Import**
+Analog zu Nextcloud via Microsoft Graph API. Besonders relevant in Azure-Umgebungen.
+
+**URL-Import**
+Webseite per URL in einen Pool laden. Text wird extrahiert (Crawl + HTML-Parsing), als Dokument gespeichert und durch die bestehende RAG-Pipeline geführt.
+
+**Globaler Wissenspool**
+Admin-verwalteter Pool der bei jeder RAG-Suche automatisch mitläuft — ohne dass der User ihn explizit auswählen muss. Geeignet für unternehmensweite Richtlinien, FAQs, Handbücher.
+
+---
+
+### Dokumentformate
+
+**Word (.docx)**
+Verarbeitung via `python-docx`. Überschriften und Tabellenstruktur werden erhalten und fließen in das Chunking ein.
+
+**Excel (.xlsx)**
+Verarbeitung via `openpyxl`. Tabelleninhalt wird strukturiert gespeichert — Vorstufe zur strukturierten Datenabfrage (SDE).
+
+**PowerPoint (.pptx)**
+Folien als Seiten, Folientitel als Überschriften. Ermöglicht RAG auf Präsentationen.
+
+**E-Mail (.eml / .msg)**
+Betreff + Body + Anhänge werden verarbeitet. Ermöglicht passiven Wissensaufbau aus E-Mail-Archiven.
+
+**HTML / Markdown**
+Direkte Verarbeitung ohne OCR-Umweg. Besonders für Web-Exporte und Dokumentationen.
+
+---
+
+### Suche & Retrieval
+
+**Cross-Pool-Suche**
+Globale Volltextsuche über alle Pools + eigene Dokumente in einer einzigen Anfrage. Ergebnisse zeigen die Herkunft (Pool-Name + Dokument).
+
+**Metadaten-Filter**
+Suche auf Dokumenttyp, Datum, Tag oder Pool eingrenzen. Beispiel: "Suche nur in Rechnungen aus 2025".
+
+**Chunk-Debugger im Admin**
+Für eine Testfrage anzeigen: welche Chunks wurden gefunden, mit welchem Score, aus welchem Dokument/Pool. Hilfreich um Retrieval-Qualität zu beurteilen.
+
+**Einzeldokument-Fokus**
+Nutzer kann einen Chat hart auf ein bestimmtes Dokument beschränken (`document_id`-Filter). Alle anderen Dokumente werden ignoriert.
+
+**Duplikat-Erkennung**
+Warnung wenn ein Dokument mit identischem oder sehr ähnlichem Inhalt bereits im Pool existiert (Embedding-Similarity beim Upload).
+
+---
 
 ### Tabellen-Extraktion & strukturierte Abfragen (SDE — Structured Data Extraction)
 
@@ -148,85 +233,80 @@ Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente able
 3. **Abfragen — zwei Ansätze**:
    - **Direkt via SQL/JSONB**: Aggregationen wie `SUM`, `AVG`, `COUNT` direkt in PostgreSQL auf den JSONB-Daten
    - **Text-to-SQL**: Nutzer stellt Frage in natürlicher Sprache → LLM generiert SQL-Query auf den Tabellendaten → Ergebnis wird zurückgegeben
-4. **Integration in Chat-RAG**: Bei Zahlen-/Berechnungsfragen werden automatisch Tabellendaten statt (oder zusätzlich zu) Text-Chunks einbezogen; Ergebnis erscheint als Antwort mit Quellenangabe (Dokument + Tabellenposition)
+4. **Integration in Chat-RAG**: Bei Zahlen-/Berechnungsfragen werden automatisch Tabellendaten statt (oder zusätzlich zu) Text-Chunks einbezogen
 
 **Beispiel-Flow**:
 > Upload: 12 Rechnungs-PDFs → Tabellen extrahiert und gespeichert
 > User: *"Wie hoch ist die Gesamtsumme der Rechnungen im Januar 2026?"*
 > System: Tabellendaten abfragen → `SELECT SUM(betrag::numeric) WHERE datum LIKE '01/2026%'` → *"Gesamtsumme Januar 2026: 4.320,00 €"* (Quellen: Rechnung-001.pdf, Rechnung-003.pdf, ...)
 
-**Scope-Unterstützung**: Funktioniert für eigene Dokumente (Conversation-Scope), Pool-Dokumente und globale Dokumente — analog zur bestehenden RAG-Scope-Logik.
-
-**Technische Abhängigkeiten**: Neue Migration `app_document_tables`, erweiterter Upload-Flow, optionaler LLM-Schritt für Tabellennormalisierung, Text-to-SQL-Modul im Backend.
+---
 
 ### Dokumente & Wissensmanagement
 
-**Automatische Zusammenfassung beim Upload**
-Beim Indexieren wird direkt eine LLM-generierte Kurzzusammenfassung gespeichert. Sichtbar im Dokument-Tab und optional als zusätzlicher RAG-Kontext ("Was ist der Inhalt dieses Dokuments?"). Geringer Mehraufwand: ein LLM-Call beim Upload.
-
 **Dokument-Tagging**
-Manuell vergebene oder LLM-automatisch generierte Tags pro Dokument (z. B. "Rechnung", "Vertrag", "Protokoll"). Ermöglicht gefilterte RAG-Suche: "Suche nur in Rechnungen" oder "Suche nur in Dokumenten aus 2025".
+Manuell vergebene oder LLM-automatisch generierte Tags pro Dokument (z. B. "Rechnung", "Vertrag", "Protokoll"). Ermöglicht gefilterte RAG-Suche.
 
 **Dokumentversionen**
-Bei erneutem Upload eines Dokuments mit identischem Dateinamen wird die alte Version archiviert statt überschrieben. Versionsverlauf im UI einsehbar; ältere Versionen können aus dem RAG-Index ausgeschlossen werden.
+Bei erneutem Upload eines Dokuments mit identischem Dateinamen wird die alte Version archiviert statt überschrieben. Versionsverlauf im UI einsehbar.
 
 **Ablaufdatum für Dokumente**
-Dokumente können mit einem Ablaufdatum versehen werden (z. B. Preislisten, temporäre Richtlinien). Nach Ablauf werden sie automatisch aus dem RAG-Index deaktiviert und im UI als "abgelaufen" markiert.
+Dokumente können mit einem Ablaufdatum versehen werden. Nach Ablauf werden sie automatisch aus dem RAG-Index deaktiviert und im UI als "abgelaufen" markiert.
+
+**Lücken-Erkennung (Knowledge Gap Detection)**
+Das System erkennt wenn Fragen wiederholt keine guten RAG-Treffer liefern und meldet im Admin-Dashboard: "Zu folgenden Themen fehlen Dokumente." Basis: niedrige Similarity-Scores als Signal.
 
 ---
 
-### Chat & RAG
+### Chat & UX
 
-**Zitatmodus (erweiterte Source-Attribution)**
-RAG-Antworten enthalten nicht nur den Dateinamen als Quelle, sondern exakte Textzitate mit Seitenangabe. Erweiterung der bestehenden `SourceDisplay`-Komponente; geringer Mehraufwand.
-
-**Lücken-Erkennung (Knowledge Gap Detection)**
-Das System erkennt, wenn Fragen wiederholt keine guten RAG-Treffer liefern, und meldet im Admin-Dashboard: "Zu folgenden Themen fehlen Dokumente." Basis: niedrige Similarity-Scores als Signal.
-
-**Einzeldokument-Fokus**
-Nutzer kann einen Chat explizit auf ein bestimmtes Dokument beschränken ("Nur dieses Dokument befragen"). Filtert die RAG-Suche hart auf `document_id`, ignoriert alle anderen Dokumente.
+**Quelldokument direkt öffnen**
+Klick auf einen Zitat-Tag öffnet die Dokumentvorschau direkt an der richtigen Stelle (Seite/Abschnitt). Erfordert Verlinkung von chunk_index → Vorschau-Offset.
 
 **Konversations-Export**
-Chat-Verlauf als PDF oder Markdown exportieren — inkl. Quellenhinweisen. Weitgehend Frontend-seitig umsetzbar (kein neues Backend-Modul nötig).
+Chat-Verlauf als PDF oder Markdown exportieren — inkl. Quellenhinweisen. Größtenteils Frontend-seitig umsetzbar.
+
+**Sprachausgabe (TTS)**
+Text-to-Speech für Antworten via OpenAI TTS API. Konfigurierbar per Assistent oder global.
 
 ---
 
 ### Zusammenarbeit
 
-**Konversation teilen**
-Read-only Deeplink auf eine Konversation — ähnlich wie bei anderen Chat-Tools. Empfänger sieht den Verlauf ohne eigenen Account (oder mit, je nach Konfiguration).
-
 **Pool-Benachrichtigungen**
-Pool-Mitglieder erhalten eine Benachrichtigung (In-App oder E-Mail), wenn neue Dokumente hochgeladen oder Pool-Chats aktualisiert werden.
+Pool-Mitglieder erhalten eine Benachrichtigung (In-App oder E-Mail) wenn neue Dokumente hochgeladen oder Pool-Chats aktualisiert werden.
 
 **Kommentare auf Nachrichten**
-Nutzer können KI-Antworten annotieren oder mit Kommentaren versehen — für interne Qualitätssicherung oder Teamdiskussion zu einem bestimmten Ergebnis.
+Nutzer können KI-Antworten annotieren oder mit Kommentaren versehen — für interne Qualitätssicherung oder Teamdiskussion.
+
+**Konversation teilen**
+Read-only Deeplink auf eine Konversation. Empfänger sieht den Verlauf ohne eigenen Account (oder mit, je nach Konfiguration).
 
 ---
 
 ### Automatisierung
 
-**E-Mail-Eingang als Dokument**
-E-Mails an eine dedizierte Adresse werden automatisch als Dokument in einen konfigurierten Pool verarbeitet (Text + Anhänge). Ermöglicht passiven Wissensaufbau ohne manuellen Upload.
+**Geplanter Import**
+Nextcloud/SharePoint-Ordner automatisch synchronisieren (täglich oder bei Änderung).
 
-**Webhooks**
-Externe Systeme bei Ereignissen benachrichtigen (z. B. "Dokument verarbeitet", "neue Pool-Nachricht"). Konfigurierbar pro Pool oder global im Admin-Dashboard.
+**Webhook bei neuem Dokument**
+Externes System triggern wenn ein Pool-Dokument verarbeitet wurde. Konfigurierbar pro Pool.
 
 **Workflow-Engine**
 Automatisierte mehrstufige Abläufe: Dokument eingeht → Zusammenfassung erstellen → Ergebnis in Pool-Chat posten → Webhook auslösen. Visueller Editor für Workflows geplant.
 
 **Geplante Neuverarbeitung**
-Dokumente zu einem definierten Zeitpunkt automatisch neu chunken und reindexieren (z. B. täglich für Live-Feeds oder nach Modell-Updates).
+Dokumente zu einem definierten Zeitpunkt automatisch neu chunken und reindexieren.
 
 ---
 
 ### Analytics & Qualität
 
 **Abfrage-Analytics**
-Welche Themen werden am häufigsten gefragt, welche Dokumente am häufigsten abgerufen — sichtbar im Admin-Dashboard als Nutzungsstatistik.
+Welche Themen werden am häufigsten gefragt, welche Dokumente am häufigsten abgerufen — sichtbar im Admin-Dashboard.
 
 **RAG-Qualitätsmetrik**
-Durchschnittliche Similarity-Scores und Retrieval-Trefferquote über die Zeit. Gibt Hinweise ob neue Dokumente oder ein Re-Chunk nötig ist.
+Durchschnittliche Similarity-Scores und Retrieval-Trefferquote über die Zeit.
 
 **Kostenaufschlüsselung nach Pool**
 Im Admin-Dashboard: welcher Pool verursacht wie viele Embedding- und LLM-Kosten — für interne Verrechnung oder Budgetkontrolle.
@@ -236,26 +316,29 @@ Im Admin-Dashboard: welcher Pool verursacht wie viele Embedding- und LLM-Kosten 
 ### KI-Features
 
 **Agent-Modus**
-LLM plant selbst mehrstufige Aufgaben: recherchieren (RAG), berechnen (SDE/Tabellen), zusammenfassen, Ergebnis formatieren — ohne dass der Nutzer jeden Schritt vorgibt. Basis für komplexe Assistenten-Workflows.
+LLM plant selbst mehrstufige Aufgaben: recherchieren (RAG), berechnen (SDE/Tabellen), zusammenfassen, Ergebnis formatieren — ohne dass der Nutzer jeden Schritt vorgibt.
 
 **Auto-Tagging**
-LLM vergibt beim Upload automatisch Kategorien und Tags basierend auf dem extrahierten Text. Kann manuell überschrieben werden.
+LLM vergibt beim Upload automatisch Kategorien und Tags basierend auf dem extrahierten Text.
 
 **Übersetzung**
-Dokumente oder Chat-Antworten on-the-fly übersetzen. Wahlweise beim Upload (Dokument wird auf Deutsch indexiert unabhängig der Originalsprache) oder im Chat ("Antworte auf Englisch").
+Dokumente oder Chat-Antworten on-the-fly übersetzen. Wahlweise beim Upload oder im Chat.
 
 ---
 
 ### Enterprise & Compliance
 
 **Abteilungs-/Team-Hierarchie**
-Nutzer in Abteilungen organisieren; Pools können auf Abteilungsebene sichtbar oder eingeschränkt sein. Erleichtert Governance in größeren Organisationen.
+Nutzer in Abteilungen organisieren; Pools können auf Abteilungsebene sichtbar oder eingeschränkt sein.
+
+**Storage-Limit pro User/Pool**
+Maximale Dokumentgröße oder Chunk-Anzahl konfigurierbar — für Kostenkontrolle und faire Nutzung.
 
 **DSGVO-Tools**
-Nutzer-Daten-Export (alle Konversationen, Dokumente, Nutzungsdaten) und vollständige Löschung auf Anfrage — als Admin-Funktion oder Self-Service.
+Nutzer-Daten-Export (alle Konversationen, Dokumente, Nutzungsdaten) und vollständige Löschung auf Anfrage.
 
 **Compliance-Modus**
-Konfigurierbar: bestimmte LLM-Provider sperren (z. B. nur EU-Hosting), Datenverarbeitung auf definierten Standort beschränken, Audit-Pflicht für alle KI-Antworten.
+Konfigurierbar: bestimmte LLM-Provider sperren (z. B. nur EU-Hosting), Audit-Pflicht für alle KI-Antworten.
 
 **SSO (OIDC/SAML)**
 Anbindung an Unternehmens-Identity-Provider (Azure AD, Okta, Google Workspace) für Single Sign-On und automatische Rollenvergabe.

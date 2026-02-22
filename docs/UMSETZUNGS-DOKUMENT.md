@@ -422,7 +422,7 @@
 - **Conversations: Wide-Net-Retrieval**: Statt threshold-Filterung alle verfügbaren Chunks abrufen und in Dokumentreihenfolge sortieren; relevanter für Einzeldokument-Conversations
 - **Hybrid Search**: ILIKE-Supplement garantiert dass Kapitel mit spezifischen Begriffen auch bei niedrigem Vektor-Score im Kandidatenset landen (→ in RAGplus durch BM25+RRF ersetzt)
 
-### Phase RAGplus: Verbessertes Chunking + BM25 + Re-Chunk + UX (2026-02-22)
+### Phase RAGplus: Verbessertes Chunking + BM25 + Re-Chunk + UX + Zitatmodus + Embedding-Provider + Auto-Summary (2026-02-22)
 
 #### Verbessertes Chunking-System (Ansatz A+B)
 1. **Markdown-Section-aware Chunking** (`rag.py`): `chunk_text()` erkennt Markdown-Überschriften und respektiert Sektionsgrenzen. Jeder Chunk bekommt einen Breadcrumb-Header (`## Kapitel > ### Abschnitt`) als Kontext-Anker, damit Retrieval-Treffer ohne umliegenden Text verständlich sind.
@@ -471,8 +471,99 @@
     - Pool-Kontext (`PoolDocuments.jsx`): Pending-Dokument-Karte in der Liste (Dateiname + Fortschrittsbalken + Statustext)
     - Shimmer-Animation (`@keyframes upload-processing`) für die Server-Processing-Phase
 
+#### Zitatmodus — Source-Excerpts (2026-02-22)
+12. **Migrations** (`supabase/migrations/20260223_chunk_page_number.sql`):
+    - `page_number INTEGER` Spalte in `app_document_chunks`
+    - Beide RPCs (`match_document_chunks`, `keyword_search_chunks`) geben `page_number` zurück
+13. **`documents.py`** (`_build_extracted_markdown()`): `<!-- page:N -->` Kommentare vor jeder Seite injiziert
+14. **`rag.py`** (`chunk_text()`): `_PAGE_MARKER_RE` parsed Marker, gibt `List[Tuple[str, Optional[int]]]` zurück; `process_document()` speichert `page_number` pro Chunk-Row
+15. **`main.py`**: `_make_excerpt()` entfernt Breadcrumb-Prefix (split auf `\n\n`), kürzt auf 350 Zeichen; `rag_sources` enthält `excerpt` + `chunk_index` + `page_number` in beiden Chat- und Pool-Endpunkten
+16. **`SourceDisplay.jsx`**: Collapsible Excerpts via `useState`, Chevron-Icon, `.source-tag--citable/--open`, `.source-excerpt` Blockquote; Seitenangabe `(S. N)` neben Dateiname
+
+#### Embedding-Provider-Auswahl (2026-02-22)
+17. **Migration** (`supabase/migrations/20260224_embedding_provider_setting.sql`): Patcht `rag_settings` JSONB mit `embedding_provider` + `embedding_deployment`
+18. **`admin.py`**:
+    - `DEFAULT_RAG_SETTINGS` erweitert um `embedding_provider: "openai"` und `embedding_deployment: ""`
+    - Normalisierung in `get_rag_settings()` und `update_rag_settings()`: Whitelist-Validierung für provider, strip für deployment
+    - `allowed`-Set in `update_rag_settings()` erweitert
+19. **`models.py`**: `UpdateRagSettingsRequest` erweitert um `embedding_provider: Optional[str]` + `embedding_deployment: Optional[str]`
+20. **`rag.py`** (`generate_embeddings()`): Liest `embedding_provider` aus `admin_crud.get_rag_settings()`; Azure-Pfad nutzt `api-key` Header, Deployment-URL, kein `model`-Feld; `logger.info()` zeigt genutzten Provider
+21. **`rag.py`** (`process_document()`): `record_usage()` nutzt tatsächlichen Provider statt hardcoded `"openai"`
+22. **`admin.py`** (`get_detailed_usage()`): `by_model`-Gruppierung nutzt `(model, provider)` als Key — gleicher Modellname von unterschiedlichen Providern erscheint als separate Zeile
+23. **`AdminDashboard.jsx`** (RetrievalTab): Select für OpenAI/Azure + bedingtes Deployment-Name-Input-Feld; form-State, loadSettings, handleSave erweitert
+24. **`main.py`**: `target_id=None` für Audit-Event `admin.rag_settings.update` (war ungültige UUID); `logging.basicConfig(level=logging.INFO)` für sichtbare App-Logger; `import re` ergänzt
+
+#### Automatische Dokument-Zusammenfassung (2026-02-22)
+25. **Migration** (`supabase/migrations/20260225_document_summary.sql`): `summary TEXT` Spalte in `app_documents`
+26. **`documents.py`**: `update_document_summary(document_id, summary)` CRUD-Funktion; `summary` in `list_documents()` Select
+27. **`pools.py`**: `summary` in `list_pool_documents()` Select
+28. **`main.py`** (`_summarize_document()`): Async-Helper — stripped Page-Marker, kürzt auf 6000 Zeichen, ruft Default-LLM mit deutschem 2-3-Satz-Prompt auf, silent fail; wird nach `process_document()` in beiden Upload-Endpunkten aufgerufen (Chat + Pool)
+29. **`DocumentList.jsx`**: Summary als `title`-Tooltip auf Dokument-Tag
+30. **`PoolDocuments.jsx`**: Summary als 2-zeilig geklammter Text (`.pool-doc-summary`) unter Dateiname; in Preview-Modal als Blockzitat (`.pool-preview-summary`) vor Volltext
+31. **`styles.css`**: `.pool-doc-summary` (2-line clamp), `.pool-preview-summary` (kursives Blockzitat mit Akzent-Border)
+
+## Datenbank-Schema-Übersicht
+
+**KEINE shared Tabellen — jede Anwendung nutzt nur eigene Tabellen.**
+
+| Tabelle | Zugehörigkeit | Beschreibung |
+|---------|---------------|--------------|
+| `app_users` | XQT5 AI Plattform | Eigene Benutzer mit is_admin Flag |
+| `chats` | XQT5 AI Plattform | Chat-Konversationen mit model/temperature/assistant_id |
+| `chat_messages` | XQT5 AI Plattform | Chat-Nachrichten (clean, ohne Pipeline-Felder) |
+| `chat_token_usage` | XQT5 AI Plattform | Token-Verbrauch + Kosten pro Anfrage |
+| `assistants` | XQT5 AI Plattform | KI-Assistenten mit System-Prompts |
+| `prompt_templates` | XQT5 AI Plattform | Prompt-Templates mit Platzhaltern |
+| `app_model_config` | XQT5 AI Plattform | Admin-verwaltete Modell-Liste (+ deployment_name für Azure) |
+| `app_provider_keys` | XQT5 AI Plattform | Verschlüsselte Provider-API-Keys + Azure-Config |
+| `app_audit_logs` | XQT5 AI Plattform | Audit-Log-Einträge |
+| `app_runtime_config` | XQT5 AI Plattform | Admin-konfigurierbare Laufzeit-Einstellungen (RAG-Settings als JSONB) |
+| `app_documents` | XQT5 AI Plattform | Hochgeladene Dokumente (PDF/TXT/Bild) mit Status, pool_id, summary |
+| `app_document_chunks` | XQT5 AI Plattform | Dokument-Chunks mit Embeddings (vector(1536)), page_number, content_fts |
+| `app_document_assets` | XQT5 AI Plattform | OCR-extrahierte Bilder mit Embeddings für multimodales Retrieval |
+| `pool_pools` | XQT5 AI Plattform | Pool-Metadaten (name, description, icon, color, owner_id) |
+| `pool_members` | XQT5 AI Plattform | Pool-Mitgliedschaften mit Rolle (viewer/editor/admin) |
+| `pool_invite_links` | XQT5 AI Plattform | Share-Links mit Token, Rolle, max_uses, expires_at |
+| `pool_chats` | XQT5 AI Plattform | Pool-Chats (shared + private via is_shared Flag) |
+| `pool_chat_messages` | XQT5 AI Plattform | Pool-Chat-Nachrichten mit user_id für Attribution |
+| `users` | llm-council | Pipeline-Benutzer (nicht anfassen!) |
+| `conversations` | llm-council | Pipeline-Konversationen (stage1/2/3) |
+| `messages` | llm-council | Pipeline-Nachrichten (stage1/2/3, metadata) |
+| `token_usage` | llm-council | Token-Verbrauch pro Pipeline-Stage |
+| `app_settings` | llm-council | Globale Einstellungen |
+| `api_keys` | llm-council | API-Key-Verwaltung |
+| `provider_api_keys` | llm-council | Verschlüsselte Provider-Keys |
+
+## Migrations-Übersicht (chronologisch)
+
+| Migration | Inhalt |
+|-----------|--------|
+| `20260214_initial_schema.sql` | Basis-Schema |
+| `20260215_phase_a_model_temperature.sql` | Modellauswahl + Temperatur |
+| `20260215_phase_b_auth_token_tracking.sql` | Token-Tracking |
+| `20260215_phase_b_own_users_table.sql` | `app_users` Tabelle |
+| `20260216_phase_c_rag.sql` | pgvector, `app_documents`, `app_document_chunks`, `match_document_chunks()` RPC |
+| `20260216_phase_c_assistants_templates.sql` | Assistenten + Templates |
+| `20260216_phase_d_admin_audit.sql` | `app_model_config`, `app_audit_logs` |
+| `20260216_phase_d_provider_keys.sql` | `app_provider_keys` |
+| `20260216_phase_d_azure_provider.sql` | `deployment_name` in `app_model_config` |
+| `20260217_phase_d_token_version_revocation.sql` | `token_version` in `app_users` |
+| `20260218_pools.sql` | Pool-Tabellen, `pool_id` in `app_documents`, RPC-Erweiterung |
+| `20260219_drop_old_function_overloads.sql` | Bereinigung alter RPC-Signaturen |
+| `20260219_phase_f_multimodal_assets.sql` | `app_document_assets` |
+| `20260220_runtime_rag_settings.sql` | `app_runtime_config` für Admin-RAG-Settings |
+| `20260221_rag_scoped_search.sql` | Scope-isolierte RPCs (conversation/pool/global) |
+| `20260222_bm25_fts.sql` | `content_fts tsvector`, GIN-Index, `keyword_search_chunks()` RPC |
+| `20260223_chunk_page_number.sql` | `page_number` in `app_document_chunks`, RPC-Updates |
+| `20260224_embedding_provider_setting.sql` | `embedding_provider` + `embedding_deployment` in `rag_settings` |
+| `20260225_document_summary.sql` | `summary` in `app_documents` |
+
 ## Nächste Umsetzungsschritte
-1. **Workflow-Engine** für automatisierte Abläufe
-2. **SSO** (OIDC/SAML)
-3. RLS und Mandantenmodell in Supabase aktivieren
-4. Integrationstests für API und End-to-End-Chat
+- Weitere Dokumentformate: Word (.docx), Excel (.xlsx), PowerPoint (.pptx)
+- Multi-Pool-Retrieval: RAG-Suche über mehrere Pools gleichzeitig
+- Nextcloud/SharePoint-Import
+- Einzeldokument-Fokus im Chat
+- Konversations-Export (Markdown/PDF)
+- Kostenaufschlüsselung nach Pool im Admin-Dashboard
+- SSO (OIDC/SAML) — Azure AD / Okta
+- RLS und Mandantenmodell in Supabase aktivieren
