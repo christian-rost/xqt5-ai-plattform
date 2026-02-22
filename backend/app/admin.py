@@ -10,6 +10,8 @@ DEFAULT_RAG_SETTINGS = {
     "rerank_candidates": 20,
     "rerank_top_n": 6,
     "rerank_model": "rerank-v3.5",
+    "embedding_provider": "openai",
+    "embedding_deployment": "",
 }
 
 
@@ -239,12 +241,14 @@ def get_rag_settings() -> Dict[str, Any]:
     settings["rerank_model"] = str(settings.get("rerank_model", "rerank-v3.5")).strip() or "rerank-v3.5"
     if settings["rerank_top_n"] > settings["rerank_candidates"]:
         settings["rerank_top_n"] = settings["rerank_candidates"]
+    settings["embedding_provider"] = settings.get("embedding_provider", "openai") if settings.get("embedding_provider") in ("openai", "azure") else "openai"
+    settings["embedding_deployment"] = str(settings.get("embedding_deployment", "")).strip()
     return settings
 
 
 def update_rag_settings(**fields: Any) -> Dict[str, Any]:
     current = get_rag_settings()
-    allowed = {"rerank_enabled", "rerank_candidates", "rerank_top_n", "rerank_model"}
+    allowed = {"rerank_enabled", "rerank_candidates", "rerank_top_n", "rerank_model", "embedding_provider", "embedding_deployment"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return current
@@ -256,6 +260,8 @@ def update_rag_settings(**fields: Any) -> Dict[str, Any]:
     merged["rerank_model"] = str(merged.get("rerank_model", "rerank-v3.5")).strip() or "rerank-v3.5"
     if merged["rerank_top_n"] > merged["rerank_candidates"]:
         merged["rerank_top_n"] = merged["rerank_candidates"]
+    merged["embedding_provider"] = merged.get("embedding_provider", "openai") if merged.get("embedding_provider") in ("openai", "azure") else "openai"
+    merged["embedding_deployment"] = str(merged.get("embedding_deployment", "")).strip()
 
     row = {"key": "rag_settings", "value": merged}
     result = supabase.table("app_runtime_config").upsert(row, on_conflict="key").execute()

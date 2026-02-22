@@ -401,6 +401,8 @@ function RetrievalTab() {
     rerank_candidates: 20,
     rerank_top_n: 6,
     rerank_model: 'rerank-v3.5',
+    embedding_provider: 'openai',
+    embedding_deployment: '',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -461,6 +463,8 @@ function RetrievalTab() {
         rerank_candidates: data.rerank_candidates ?? 20,
         rerank_top_n: data.rerank_top_n ?? 6,
         rerank_model: data.rerank_model || 'rerank-v3.5',
+        embedding_provider: data.embedding_provider || 'openai',
+        embedding_deployment: data.embedding_deployment || '',
       })
     } catch (e) {
       setError(e.message)
@@ -479,6 +483,8 @@ function RetrievalTab() {
         rerank_candidates: Math.max(5, Math.min(100, Number(form.rerank_candidates) || 20)),
         rerank_top_n: Math.max(1, Math.min(30, Number(form.rerank_top_n) || 6)),
         rerank_model: (form.rerank_model || 'rerank-v3.5').trim(),
+        embedding_provider: form.embedding_provider || 'openai',
+        embedding_deployment: (form.embedding_deployment || '').trim(),
       }
       if (payload.rerank_top_n > payload.rerank_candidates) {
         payload.rerank_top_n = payload.rerank_candidates
@@ -490,6 +496,8 @@ function RetrievalTab() {
         rerank_candidates: updated.rerank_candidates ?? payload.rerank_candidates,
         rerank_top_n: updated.rerank_top_n ?? payload.rerank_top_n,
         rerank_model: updated.rerank_model || payload.rerank_model,
+        embedding_provider: updated.embedding_provider || payload.embedding_provider,
+        embedding_deployment: updated.embedding_deployment ?? payload.embedding_deployment,
       })
     } catch (e) {
       setError(e.message)
@@ -505,6 +513,34 @@ function RetrievalTab() {
       {error && <div className="admin-error">{error}</div>}
 
       <form className="admin-model-form" onSubmit={handleSave}>
+        <h4 style={{ margin: '0 0 12px', color: 'var(--text-primary)' }}>Embedding-Provider</h4>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Provider</label>
+            <select
+              className="form-input"
+              value={form.embedding_provider}
+              onChange={(e) => setForm((f) => ({ ...f, embedding_provider: e.target.value }))}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="azure">Azure OpenAI</option>
+            </select>
+          </div>
+          {form.embedding_provider === 'azure' && (
+            <div className="form-group">
+              <label>Azure Deployment Name</label>
+              <input
+                className="form-input"
+                value={form.embedding_deployment}
+                onChange={(e) => setForm((f) => ({ ...f, embedding_deployment: e.target.value }))}
+                placeholder="z.B. text-embedding-3-small-deploy"
+              />
+            </div>
+          )}
+        </div>
+
+        <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+        <h4 style={{ margin: '0 0 12px', color: 'var(--text-primary)' }}>Reranking</h4>
         <div className="form-row">
           <div className="form-group">
             <label>Reranking aktiviert (Cohere)</label>
@@ -560,7 +596,7 @@ function RetrievalTab() {
 
       {settings && (
         <div className="provider-hint" style={{ marginTop: 12 }}>
-          Aktive Werte: enabled={String(!!settings.rerank_enabled)}, candidates={settings.rerank_candidates}, top_n={settings.rerank_top_n}, model={settings.rerank_model}
+          Aktive Werte: embedding={settings.embedding_provider}{settings.embedding_provider === 'azure' && settings.embedding_deployment ? `/${settings.embedding_deployment}` : ''}, rerank={String(!!settings.rerank_enabled)}, candidates={settings.rerank_candidates}, top_n={settings.rerank_top_n}, model={settings.rerank_model}
         </div>
       )}
 

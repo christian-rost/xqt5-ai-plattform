@@ -280,30 +280,39 @@ def should_use_image_retrieval(query: str, image_mode: str) -> bool:
 
 
 async def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    """Generate embeddings via OpenAI API."""
-    api_key = providers_mod.get_api_key("openai")
-    if not api_key:
-        raise RuntimeError("OpenAI API key not configured — required for embeddings")
+    """Generate embeddings via OpenAI or Azure OpenAI, based on admin RAG settings."""
+    from . import admin as admin_crud  # noqa: PLC0415
+    rag_settings = admin_crud.get_rag_settings()
+    provider = rag_settings.get("embedding_provider", "openai")
+
+    if provider == "azure":
+        api_key = providers_mod.get_api_key("azure")
+        if not api_key:
+            raise RuntimeError("Azure API key not configured — required for embeddings")
+        config = providers_mod.get_provider_config("azure")
+        endpoint = config.get("endpoint_url", "").rstrip("/")
+        api_version = config.get("api_version", "2024-02-01")
+        deployment = rag_settings.get("embedding_deployment", "").strip()
+        if not deployment:
+            raise RuntimeError("Azure embedding deployment name not configured in RAG settings")
+        url = f"{endpoint}/openai/deployments/{deployment}/embeddings?api-version={api_version}"
+        headers = {"api-key": api_key, "Content-Type": "application/json"}
+        body: Dict[str, Any] = {"input": texts, "dimensions": EMBEDDING_DIMENSIONS}
+    else:  # openai (default)
+        api_key = providers_mod.get_api_key("openai")
+        if not api_key:
+            raise RuntimeError("OpenAI API key not configured — required for embeddings")
+        url = "https://api.openai.com/v1/embeddings"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        body = {"model": EMBEDDING_MODEL, "input": texts, "dimensions": EMBEDDING_DIMENSIONS}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": EMBEDDING_MODEL,
-                "input": texts,
-                "dimensions": EMBEDDING_DIMENSIONS,
-            },
-        )
+        resp = await client.post(url, headers=headers, json=body)
         if resp.status_code != 200:
-            raise RuntimeError(f"OpenAI Embedding API error {resp.status_code}: {resp.text[:300]}")
+            raise RuntimeError(f"Embedding API error ({provider}) {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
 
-    embeddings = [item["embedding"] for item in data["data"]]
-    return embeddings
+    return [item["embedding"] for item in data["data"]]
 
 
 def _estimate_tokens(text: str) -> int:
