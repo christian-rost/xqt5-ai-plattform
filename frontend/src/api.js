@@ -1,5 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001'
 
+// FastAPI can return detail as a string OR as a list of validation error objects
+function extractDetail(err, fallback) {
+  const d = err?.detail
+  if (typeof d === 'string') return d
+  if (Array.isArray(d) && d.length > 0) return d[0]?.msg || fallback
+  return fallback
+}
+
 function getAccessToken() {
   return localStorage.getItem('access_token')
 }
@@ -85,7 +93,7 @@ function uploadWithXhr(url, formData, onProgress) {
       } else {
         try {
           const err = JSON.parse(xhr.responseText)
-          reject(new Error(err.detail || `HTTP ${xhr.status}`))
+          reject(new Error(extractDetail(err, `HTTP ${xhr.status}`)))
         } catch { reject(new Error(`HTTP ${xhr.status}`)) }
       }
     }
@@ -222,7 +230,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Assistenten nicht erstellen')
+      throw new Error(extractDetail(err, 'Konnte Assistenten nicht erstellen'))
     }
     return response.json()
   },
@@ -260,7 +268,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Template nicht erstellen')
+      throw new Error(extractDetail(err, 'Konnte Template nicht erstellen'))
     }
     return response.json()
   },
@@ -298,7 +306,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Benutzer nicht aktualisieren')
+      throw new Error(extractDetail(err, 'Konnte Benutzer nicht aktualisieren'))
     }
     return response.json()
   },
@@ -309,7 +317,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Benutzer nicht löschen')
+      throw new Error(extractDetail(err, 'Konnte Benutzer nicht löschen'))
     }
     return response.json()
   },
@@ -344,7 +352,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte RAG-Einstellungen nicht speichern')
+      throw new Error(extractDetail(err, 'Konnte RAG-Einstellungen nicht speichern'))
     }
     return response.json()
   },
@@ -376,7 +384,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Modell nicht erstellen')
+      throw new Error(extractDetail(err, 'Konnte Modell nicht erstellen'))
     }
     return response.json()
   },
@@ -417,7 +425,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Key nicht speichern')
+      throw new Error(extractDetail(err, 'Konnte Key nicht speichern'))
     }
     return response.json()
   },
@@ -486,7 +494,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Pool nicht erstellen')
+      throw new Error(extractDetail(err, 'Konnte Pool nicht erstellen'))
     }
     return response.json()
   },
@@ -530,7 +538,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Mitglied nicht hinzufügen')
+      throw new Error(extractDetail(err, 'Konnte Mitglied nicht hinzufügen'))
     }
     return response.json()
   },
@@ -551,7 +559,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Mitglied nicht entfernen')
+      throw new Error(extractDetail(err, 'Konnte Mitglied nicht entfernen'))
     }
     return response.json()
   },
@@ -592,7 +600,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Pool nicht beitreten')
+      throw new Error(extractDetail(err, 'Konnte Pool nicht beitreten'))
     }
     return response.json()
   },
@@ -608,7 +616,7 @@ export const api = {
     const response = await authFetch(`${API_BASE}/api/pools/${poolId}/documents/${documentId}/preview`)
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Konnte Vorschau nicht laden')
+      throw new Error(extractDetail(err, 'Konnte Vorschau nicht laden'))
     }
     return response.json()
   },
@@ -627,7 +635,7 @@ export const api = {
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.detail || 'Text konnte nicht gespeichert werden')
+      throw new Error(extractDetail(err, 'Text konnte nicht gespeichert werden'))
     }
     return response.json()
   },
@@ -702,7 +710,7 @@ export const api = {
         try {
           const data = JSON.parse(line.slice(6))
           if (data.error) {
-            onError(data.error)
+            onError(typeof data.error === 'string' ? data.error : (data.error?.message || data.error?.detail || 'Serverfehler'))
             return
           }
           if (data.delta) {
@@ -757,7 +765,7 @@ export const api = {
         try {
           const data = JSON.parse(line.slice(6))
           if (data.error) {
-            onError(data.error)
+            onError(typeof data.error === 'string' ? data.error : (data.error?.message || data.error?.detail || 'Serverfehler'))
             return
           }
           if (data.delta) {

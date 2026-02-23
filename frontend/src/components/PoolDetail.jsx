@@ -173,7 +173,7 @@ export default function PoolDetail({
         (err) => {
           setStreamingContent(null)
           setLoading(false)
-          setError(err)
+          setError(typeof err === 'string' ? err : (err?.message || err?.detail || 'Fehler beim Senden'))
         }
       )
     } catch (e) {
