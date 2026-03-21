@@ -51,6 +51,18 @@ export default function App() {
   const [activeSection, setActiveSection] = useState('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // Close sidebar when clicking outside of it
+  useEffect(() => {
+    if (!sidebarOpen) return
+    function handleMouseDown(e) {
+      if (!e.target.closest('.content-panel') && !e.target.closest('.nav-rail')) {
+        setSidebarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [sidebarOpen])
+
   // Check auth on mount
   useEffect(() => {
     api.getMe().then((u) => {
@@ -554,45 +566,40 @@ export default function App() {
         onDeletePool={handleDeletePool}
         onLeavePool={handleLeavePool}
       />
-      <div
-        style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
-        onClick={() => { if (sidebarOpen) setSidebarOpen(false) }}
-      >
-        {showAdmin ? (
-          <AdminDashboard onClose={() => { setShowAdmin(false); setActiveSection('chat'); loadModels() }} currentUser={user} />
-        ) : displayedPool ? (
-          <PoolDetail
-            pool={displayedPool}
-            models={models}
-            selectedModel={selectedModel}
-            user={user}
-            activeTab={poolTab}
-            onTabChange={setPoolTab}
-            onCountsUpdate={setPoolCounts}
-            onError={(msg) => setError(msg)}
-          />
-        ) : (
-          <ChatArea
-            conversation={activeConversation}
-            models={models}
-            selectedModel={selectedModel}
-            temperature={temperature}
-            imageMode={imageMode}
-            loading={loading}
-            streamingContent={streamingContent}
-            error={error}
-            templates={templates}
-            documents={chatDocuments}
-            onSend={onSendMessage}
-            onWelcomeSend={handleWelcomeSend}
-            onModelChange={onModelChange}
-            onTemperatureChange={onTemperatureChange}
-            onImageModeChange={setImageMode}
-            onUpload={handleUploadDocument}
-            onDeleteDocument={handleDeleteDocument}
-          />
-        )}
-      </div>
+      {showAdmin ? (
+        <AdminDashboard onClose={() => { setShowAdmin(false); setActiveSection('chat'); loadModels() }} currentUser={user} />
+      ) : displayedPool ? (
+        <PoolDetail
+          pool={displayedPool}
+          models={models}
+          selectedModel={selectedModel}
+          user={user}
+          activeTab={poolTab}
+          onTabChange={setPoolTab}
+          onCountsUpdate={setPoolCounts}
+          onError={(msg) => setError(msg)}
+        />
+      ) : (
+        <ChatArea
+          conversation={activeConversation}
+          models={models}
+          selectedModel={selectedModel}
+          temperature={temperature}
+          imageMode={imageMode}
+          loading={loading}
+          streamingContent={streamingContent}
+          error={error}
+          templates={templates}
+          documents={chatDocuments}
+          onSend={onSendMessage}
+          onWelcomeSend={handleWelcomeSend}
+          onModelChange={onModelChange}
+          onTemperatureChange={onTemperatureChange}
+          onImageModeChange={setImageMode}
+          onUpload={handleUploadDocument}
+          onDeleteDocument={handleDeleteDocument}
+        />
+      )}
 
       {showAssistantManager && (
         <AssistantManager
