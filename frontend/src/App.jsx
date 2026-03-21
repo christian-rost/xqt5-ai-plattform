@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from './api'
 import LoginScreen from './components/LoginScreen'
+import NavRail from './components/NavRail'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import AdminDashboard from './components/AdminDashboard'
@@ -42,6 +43,9 @@ export default function App() {
   // Pools state
   const [pools, setPools] = useState([])
   const [activePool, setActivePool] = useState(null)
+
+  // Nav section: 'chat' | 'pools' | 'admin'
+  const [activeSection, setActiveSection] = useState('chat')
 
   // Check auth on mount
   useEffect(() => {
@@ -181,7 +185,8 @@ export default function App() {
   async function onCreateConversation(assistantId = null) {
     setLoading(true)
     setError('')
-    setActivePool(null) // Mutually exclusive
+    setActivePool(null)
+    setActiveSection('chat')
     try {
       const created = await api.createConversation('New Conversation', assistantId)
       setSelectedModel(created.model || defaultModelId)
@@ -209,7 +214,8 @@ export default function App() {
   async function onOpenConversation(id) {
     setLoading(true)
     setError('')
-    setActivePool(null) // Mutually exclusive
+    setActivePool(null)
+    setActiveSection('chat')
     try {
       const full = await api.getConversation(id)
       setActiveConversation(full)
@@ -364,10 +370,25 @@ export default function App() {
     }
   }
 
+  function handleSectionChange(section) {
+    setActiveSection(section)
+    if (section === 'chat') {
+      setActivePool(null)
+      setShowAdmin(false)
+    } else if (section === 'pools') {
+      setActiveConversation(null)
+      setShowAdmin(false)
+    } else if (section === 'admin') {
+      setActivePool(null)
+      setShowAdmin(true)
+    }
+  }
+
   // Pool handlers
   async function handleSelectPool(pool) {
-    setActiveConversation(null) // Mutually exclusive
+    setActiveConversation(null)
     setShowAdmin(false)
+    setActiveSection('pools')
     setActivePool(pool)
   }
 
@@ -408,30 +429,33 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar
+      <NavRail
         user={user}
-        usage={usage}
-        conversations={conversations}
-        activeId={activePool ? null : activeConversation?.id}
-        loading={loading}
-        assistants={assistants}
-        showAdmin={showAdmin}
-        pools={pools}
-        activePoolId={activePool?.id}
-        onCreateConversation={() => onCreateConversation()}
-        onOpenConversation={onOpenConversation}
-        onDeleteConversation={onDeleteConversation}
-        onSelectAssistant={onSelectAssistant}
+        activeSection={activeSection}
+        onSectionChange={handleSectionChange}
         onManageAssistants={() => setShowAssistantManager(true)}
         onManageTemplates={() => setShowTemplateManager(true)}
-        onAdmin={() => { setShowAdmin(true); setActivePool(null) }}
+        onAdmin={() => handleSectionChange('admin')}
         onLogout={handleLogout}
+      />
+      <Sidebar
+        section={activeSection === 'pools' ? 'pools' : 'chat'}
+        conversations={conversations}
+        pools={pools}
+        activeId={activePool ? null : activeConversation?.id}
+        activePoolId={activePool?.id}
+        loading={loading}
+        usage={usage}
+        assistants={assistants}
+        onCreateConversation={onCreateConversation}
+        onOpenConversation={onOpenConversation}
+        onDeleteConversation={onDeleteConversation}
         onSelectPool={handleSelectPool}
         onCreatePool={handleCreatePool}
         onJoinPool={handleJoinPool}
       />
       {showAdmin ? (
-        <AdminDashboard onClose={() => { setShowAdmin(false); loadModels() }} currentUser={user} />
+        <AdminDashboard onClose={() => { setShowAdmin(false); setActiveSection('chat'); loadModels() }} currentUser={user} />
       ) : activePool ? (
         <PoolDetail
           pool={activePool}

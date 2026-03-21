@@ -8,8 +8,19 @@ function formatCost(cost) {
   return `$${cost.toFixed(4)}`
 }
 
-export default function UsageWidget({ usage }) {
+export default function UsageWidget({ usage, compact }) {
   if (!usage) return null
+
+  if (compact) {
+    return (
+      <div className="usage-widget-compact">
+        <span className="usage-compact-label">Verbrauch</span>
+        <span className="usage-compact-value">
+          {formatTokens(usage.total_tokens)} · {formatCost(usage.estimated_cost)}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className="usage-widget">

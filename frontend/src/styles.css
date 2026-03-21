@@ -1,13 +1,33 @@
 :root {
-  --color-primary: #ee7f00;
-  --color-primary-dark: #cc6d00;
-  --color-black: #213452;
-  --color-dark: #2d4263;
-  --color-dark-hover: #3a5279;
-  --color-white: #ffffff;
-  --color-gray-light: #f5f5f5;
-  --color-gray: #888;
-  --color-border: #e0e0e0;
+  /* Marke */
+  --color-primary:      #ee7f00;
+  --color-primary-dark: #d97200;
+
+  /* Struktur */
+  --color-dark:         #213452;
+  --color-dark-hover:   #3a5279;
+  --color-white:        #ffffff;
+
+  /* Grautöne */
+  --color-bg:           #f5f5f5;
+  --color-gray-light:   #f5f5f5;
+  --color-gray:         #e0e0e0;
+  --color-border:       #e0e0e0;
+  --color-text:         #333333;
+  --color-text-light:   #888888;
+
+  /* Semantisch */
+  --color-success:      #28a745;
+  --color-error:        #dc3545;
+  --color-warning:      #ffc107;
+
+  /* Schatten */
+  --shadow-sm:          0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md:          0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-lg:          0 16px 40px rgba(0, 0, 0, 0.3);
+
+  /* Übergänge */
+  --transition:         0.15s ease;
 
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   line-height: 1.5;
@@ -43,173 +63,450 @@ body {
   height: 100vh;
 }
 
-/* ── Sidebar ── */
+/* ── Nav Rail ── */
 
-.sidebar {
-  width: 260px;
-  background: var(--color-black);
-  color: var(--color-white);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Flex container holding pools panel + divider + conversations panel */
-.sidebar-panels {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* Pool section panel — height controlled by splitPct inline style */
-.sidebar-pool-panel {
-  overflow-y: auto;
-  min-height: 0;
+.nav-rail {
+  width: 56px;
   flex-shrink: 0;
-}
-
-/* Conversations section panel — takes remaining space */
-.sidebar-conv-panel {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  background: var(--color-dark);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 0;
 }
 
-/* Draggable divider between pools and conversations */
-.sidebar-drag-divider {
-  flex-shrink: 0;
-  height: 8px;
-  cursor: ns-resize;
+.nav-rail-logo {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 2px -16px; /* extend to sidebar edges */
-  padding: 0 16px;
-  background: transparent;
-  transition: background 0.15s;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
-.sidebar-drag-divider:hover,
-.sidebar-drag-divider:active {
-  background: rgba(255, 255, 255, 0.05);
+.nav-rail-items,
+.nav-rail-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 0 8px;
 }
 
-.sidebar-drag-handle {
-  width: 32px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--color-gray);
-  opacity: 0.4;
-  transition: opacity 0.15s;
+.nav-rail-items {
+  flex: 1;
 }
 
-.sidebar-drag-divider:hover .sidebar-drag-handle,
-.sidebar-drag-divider:active .sidebar-drag-handle {
-  opacity: 0.8;
+.nav-rail-divider {
+  width: 24px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 6px 0;
+  flex-shrink: 0;
 }
 
-.sidebar h1 {
-  font-size: 18px;
-  margin: 0;
+.nav-rail-item {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+
+.nav-rail-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-white);
+}
+
+.nav-rail-item.active {
+  background: rgba(238, 127, 0, 0.18);
   color: var(--color-primary);
 }
 
-.new-chat-btn {
+/* CSS Tooltip */
+.nav-rail-item::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--color-dark);
+  color: var(--color-white);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition);
+  z-index: 200;
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-rail-item:hover::after {
+  opacity: 1;
+}
+
+/* Footer */
+.nav-rail-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 4px;
+  flex-shrink: 0;
+}
+
+.nav-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(238, 127, 0, 0.9);
+  color: var(--color-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  position: relative;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.nav-admin-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  background: var(--color-success);
+  border-radius: 50%;
+  border: 1.5px solid var(--color-dark);
+}
+
+.nav-logout-btn {
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+
+.nav-logout-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-white);
+}
+
+/* ── Content Panel ── */
+
+.content-panel {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--color-white);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 8px;
+  flex-shrink: 0;
+}
+
+.content-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.content-panel-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.panel-header-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-light);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.panel-header-btn:hover {
+  border-color: var(--color-dark);
+  color: var(--color-dark);
+  background: var(--color-bg);
+}
+
+.panel-header-btn--primary {
+  background: var(--color-dark);
+  border-color: var(--color-dark);
+  color: var(--color-white);
+}
+
+.panel-header-btn--primary:hover {
+  background: var(--color-dark-hover);
+  border-color: var(--color-dark-hover);
+  color: var(--color-white);
+}
+
+.content-panel-actions {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Assistant-Dropdown im Content Panel */
+.assistant-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  font-size: 12px;
+  color: var(--color-text);
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.assistant-select:focus {
+  border-color: var(--color-primary);
+}
+
+/* Neuer Chat / Neuer Item Button */
+.new-item-btn {
   width: 100%;
   background: var(--color-primary);
   color: var(--color-white);
   border: none;
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
-  margin-bottom: 8px;
-  transition: background 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: background var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.new-chat-btn:hover {
+.new-item-btn:hover:not(:disabled) {
   background: var(--color-primary-dark);
 }
 
-.new-chat-btn:disabled {
-  opacity: 0.6;
+.new-item-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.conversation-list {
+/* Panel-Liste (Konversationen / Pools) */
+.panel-list {
   flex: 1;
   overflow-y: auto;
+  padding: 4px 8px;
   min-height: 0;
 }
 
-.no-conversations {
-  color: var(--color-gray);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 20px;
-}
-
-.conversation-item {
-  padding: 12px;
-  border-radius: 8px;
+.panel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 6px;
   cursor: pointer;
-  margin-bottom: 4px;
-  transition: background 0.2s;
+  transition: background var(--transition);
   position: relative;
+  margin-bottom: 2px;
 }
 
-.conversation-item:hover {
-  background: var(--color-dark);
+.panel-item:hover {
+  background: var(--color-bg);
 }
 
-.conversation-item.active {
-  background: var(--color-dark);
-  border-left: 3px solid var(--color-primary);
+.panel-item.active {
+  background: rgba(238, 127, 0, 0.08);
+  border-left: 2px solid var(--color-primary);
 }
 
-.conversation-title {
+.panel-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-item-title {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.message-count {
+.panel-item-sub {
   display: block;
-  font-size: 12px;
-  color: var(--color-gray);
-  margin-top: 4px;
+  font-size: 11px;
+  color: var(--color-text-light);
+  margin-top: 2px;
 }
 
-.conversation-item .delete-btn {
+.panel-item-delete {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: var(--color-gray);
-  font-size: 18px;
+  color: var(--color-text-light);
+  font-size: 16px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
   opacity: 0;
-  transition: opacity 0.2s, color 0.2s, background 0.2s;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  line-height: 1;
 }
 
-.conversation-item:hover .delete-btn {
+.panel-item:hover .panel-item-delete {
   opacity: 1;
 }
 
-.conversation-item .delete-btn:hover {
-  color: #ff4444;
-  background: rgba(255, 68, 68, 0.1);
+.panel-item-delete:hover {
+  color: var(--color-error);
+  background: rgba(220, 53, 69, 0.08);
+}
+
+.panel-pool-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* Leerzustand */
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 16px;
+  color: var(--color-text-light);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Pool Join Form (light bg) */
+.pool-join-input-light {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition);
+}
+
+.pool-join-input-light:focus {
+  border-color: var(--color-primary);
+}
+
+.pool-join-submit {
+  width: 100%;
+  padding: 7px;
+  background: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  color: var(--color-white);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.pool-join-submit:hover {
+  background: var(--color-primary-dark);
+}
+
+.pool-join-error-light {
+  font-size: 11px;
+  color: var(--color-error);
+  padding: 2px 0;
+}
+
+/* Content Panel Footer (Usage) */
+.content-panel-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.usage-widget-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.usage-compact-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.usage-compact-value {
+  font-size: 11px;
+  color: var(--color-text-light);
+}
+
+/* Pool-Join-Form im Panel (vorheriger Stil, wird nicht mehr gebraucht) */
+.pool-join-form {
+  padding: 0 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* ── Chat Area ── */
@@ -243,7 +540,7 @@ body {
 .welcome h2 {
   font-size: 24px;
   margin-bottom: 8px;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 /* ── Messages ── */
@@ -295,7 +592,7 @@ body {
 .message-model {
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   text-transform: none;
   letter-spacing: normal;
   background: var(--color-border);
@@ -486,7 +783,7 @@ body {
 .message.assistant .message-content h4 {
   margin-top: 16px;
   margin-bottom: 8px;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .message.assistant .message-content h1 { font-size: 1.4em; }
@@ -609,7 +906,7 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: var(--color-black);
+  background: var(--color-dark);
 }
 
 .login-card {
@@ -642,7 +939,7 @@ body {
   border: none;
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
@@ -706,175 +1003,35 @@ body {
   cursor: not-allowed;
 }
 
-/* ── Sidebar Header & Footer ── */
-
-.sidebar-header {
-  margin-bottom: 4px;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.user-name {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.admin-badge {
-  font-size: 11px;
-  background: var(--color-primary);
-  color: var(--color-white);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* ── Usage Widget ── */
+/* ── Usage Widget (dark context, fallback) ── */
 
 .usage-widget {
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
 }
 
 .usage-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--color-text-light);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .usage-row {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  color: var(--color-text-light);
   padding: 2px 0;
 }
 
 .usage-row span:last-child {
   font-weight: 600;
-  color: var(--color-white);
-}
-
-/* ── Logout Button ── */
-
-.logout-btn {
-  width: 100%;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-
-.logout-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--color-white);
-}
-
-/* ── Assistant Selector (Sidebar) ── */
-
-.assistant-selector {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.assistant-selector-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
-
-.assistant-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.assistant-card {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 0.2s, border-color 0.2s;
-}
-
-.assistant-card:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: var(--color-primary);
-}
-
-.assistant-icon {
-  font-size: 16px;
-}
-
-.assistant-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100px;
-}
-
-.assistant-global-badge {
-  font-size: 9px;
-  background: var(--color-primary);
-  color: var(--color-white);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-weight: 600;
-  margin-left: 4px;
-}
-
-/* ── Sidebar Action Buttons ── */
-
-.sidebar-actions {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.sidebar-action-btn {
-  flex: 1;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-
-.sidebar-action-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 /* ── Modal (shared for AssistantManager & TemplateManager) ── */
@@ -913,7 +1070,7 @@ body {
 .modal-header h2 {
   font-size: 18px;
   margin: 0;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .modal-close {
@@ -921,13 +1078,13 @@ body {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   padding: 0 4px;
   line-height: 1;
 }
 
 .modal-close:hover {
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .modal-error {
@@ -955,7 +1112,7 @@ body {
 
 .form-hint {
   font-weight: 400;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   font-size: 12px;
 }
 
@@ -1100,7 +1257,7 @@ body {
 .manager-item-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-black);
+  color: var(--color-dark);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1108,7 +1265,7 @@ body {
 
 .manager-item-desc {
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1123,7 +1280,7 @@ body {
 
 .manager-empty {
   text-align: center;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   font-size: 14px;
   padding: 24px;
 }
@@ -1201,7 +1358,7 @@ body {
 
 .template-picker-cat {
   font-size: 11px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 /* ── Admin Dashboard ── */
@@ -1224,7 +1381,7 @@ body {
 
 .admin-header h2 {
   font-size: 20px;
-  color: var(--color-black);
+  color: var(--color-dark);
   margin: 0;
 }
 
@@ -1241,7 +1398,7 @@ body {
   border: none;
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
@@ -1249,7 +1406,7 @@ body {
 }
 
 .admin-tab:hover {
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .admin-tab.active {
@@ -1266,7 +1423,7 @@ body {
 .admin-loading {
   text-align: center;
   padding: 40px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   font-size: 14px;
 }
 
@@ -1292,7 +1449,7 @@ body {
   padding: 10px 12px;
   background: var(--color-gray-light);
   font-weight: 600;
-  color: var(--color-black);
+  color: var(--color-dark);
   border-bottom: 2px solid var(--color-border);
   font-size: 13px;
   white-space: nowrap;
@@ -1321,7 +1478,7 @@ body {
 
 .admin-empty-cell {
   text-align: center;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   padding: 24px !important;
 }
 
@@ -1331,7 +1488,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 /* ── Admin Cards ── */
@@ -1353,7 +1510,7 @@ body {
 .admin-card-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -1362,12 +1519,12 @@ body {
 .admin-card-value {
   font-size: 28px;
   font-weight: 700;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .admin-section-title {
   font-size: 16px;
-  color: var(--color-black);
+  color: var(--color-dark);
   margin-bottom: 12px;
 }
 
@@ -1393,7 +1550,7 @@ body {
 .token-filter-group label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -1403,7 +1560,7 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-white);
-  color: var(--color-black);
+  color: var(--color-dark);
   font-size: 14px;
 }
 
@@ -1421,7 +1578,7 @@ body {
 
 .admin-card-sub {
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   margin-top: 4px;
 }
 
@@ -1493,30 +1650,6 @@ body {
   margin-bottom: 16px;
 }
 
-/* ── Sidebar Admin Button ── */
-
-.sidebar-admin-btn {
-  width: 100%;
-  padding: 10px 16px;
-  background: #2d4263;
-  color: #ffffff;
-  border: 1px solid #3a5279;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 8px;
-  transition: background 0.2s, border-color 0.2s;
-}
-
-.sidebar-admin-btn:hover {
-  background: #3a5279;
-}
-
-.sidebar-admin-btn.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-}
 
 /* ── Provider Management ── */
 
@@ -1667,7 +1800,7 @@ body {
 
 .file-upload-label {
   font-size: 10px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   white-space: nowrap;
 }
 
@@ -1811,7 +1944,7 @@ body {
 .rag-sources-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -1896,7 +2029,7 @@ body {
 
 .rag-image-item figcaption {
   font-size: 11px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   line-height: 1.4;
 }
 
@@ -1951,7 +2084,7 @@ body {
 
 .pool-empty {
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   text-align: center;
   padding: 8px;
 }
@@ -1996,7 +2129,7 @@ body {
 
 .pool-item-role {
   font-size: 11px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 /* ── Pool Join Form ── */
@@ -2071,12 +2204,12 @@ body {
 .pool-detail-title h2 {
   font-size: 18px;
   margin: 0;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .pool-detail-desc {
   font-size: 13px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   margin: 2px 0 0;
 }
 
@@ -2099,7 +2232,7 @@ body {
   border: none;
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
@@ -2107,7 +2240,7 @@ body {
 }
 
 .pool-tab:hover {
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .pool-tab.active {
@@ -2132,12 +2265,12 @@ body {
 
 .pool-upload-hint {
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 .pool-empty-state {
   text-align: center;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   font-size: 14px;
   padding: 40px 20px;
 }
@@ -2182,7 +2315,7 @@ body {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-black);
+  color: var(--color-dark);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2203,7 +2336,7 @@ body {
 .pool-doc-meta {
   display: block;
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   margin-top: 2px;
 }
 
@@ -2224,7 +2357,7 @@ body {
   border: none;
   font-size: 18px;
   cursor: pointer;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   padding: 4px 8px;
   border-radius: 4px;
   transition: color 0.2s, background 0.2s;
@@ -2301,13 +2434,13 @@ body {
   border: none;
   background: none;
   font-size: 24px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   cursor: pointer;
   line-height: 1;
 }
 
 .pool-preview-close:hover {
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .pool-preview-body {
@@ -2339,7 +2472,7 @@ body {
 .pool-preview-empty {
   margin-top: 10px;
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 .pool-preview-error {
@@ -2355,7 +2488,7 @@ body {
 .pool-text-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 .pool-text-input,
@@ -2365,7 +2498,7 @@ body {
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 14px;
-  color: var(--color-black);
+  color: var(--color-dark);
   background: #fff;
 }
 
@@ -2405,7 +2538,7 @@ body {
 .pool-chat-section-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -2442,13 +2575,13 @@ body {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .pool-chat-meta {
   display: block;
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 .pool-chat-delete {
@@ -2456,7 +2589,7 @@ body {
   border: none;
   font-size: 18px;
   cursor: pointer;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   opacity: 0;
   transition: opacity 0.2s, color 0.2s;
   padding: 4px 8px;
@@ -2491,7 +2624,7 @@ body {
   flex: 1;
   font-size: 15px;
   font-weight: 600;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .pool-messages {
@@ -2562,12 +2695,12 @@ body {
 .pool-member-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-black);
+  color: var(--color-dark);
 }
 
 .pool-member-you {
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
   font-weight: 400;
 }
 
@@ -2664,7 +2797,7 @@ body {
 
 .pool-share-existing h4 {
   font-size: 14px;
-  color: var(--color-black);
+  color: var(--color-dark);
   margin-bottom: 10px;
 }
 
@@ -2694,7 +2827,7 @@ body {
 
 .pool-invite-uses {
   font-size: 12px;
-  color: var(--color-gray);
+  color: var(--color-text-light);
 }
 
 /* ── Create Pool Dialog ── */
@@ -2744,7 +2877,7 @@ body {
 }
 
 .color-option.selected {
-  border-color: var(--color-black);
+  border-color: var(--color-dark);
   transform: scale(1.15);
 }
 
