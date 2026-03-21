@@ -468,7 +468,7 @@ export default function App() {
     setActivePool(pool)
     setDisplayedPool(pool)
     setPoolTab('chats')
-    setSidebarOpen(true)
+    setSidebarOpen(false)
   }
 
   async function handleDeletePool() {
