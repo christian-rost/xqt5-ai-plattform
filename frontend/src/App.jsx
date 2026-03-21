@@ -520,7 +520,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app${sidebarOpen && activeSection !== 'admin' ? ' app--sidebar' : ''}`}>
       <NavRail
         user={user}
         activeSection={activeSection}
