@@ -84,13 +84,14 @@ export default function NavRail({
   onManageTemplates,
   onAdmin,
   onLogout,
+  onHome,
 }) {
   const initial = user?.username?.[0]?.toUpperCase() ?? '?'
 
   return (
     <nav className="nav-rail">
       {/* Logo */}
-      <div className="nav-rail-logo">
+      <div className="nav-rail-logo" onClick={onHome} style={{ cursor: 'pointer' }} title="Startseite">
         XQT<span className="nav-rail-logo-sub">5</span>
       </div>
 

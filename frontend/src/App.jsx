@@ -543,6 +543,14 @@ export default function App() {
         onManageTemplates={() => setShowTemplateManager(true)}
         onAdmin={() => handleSectionChange('admin')}
         onLogout={handleLogout}
+        onHome={() => {
+          setSidebarOpen(false)
+          setActiveSection('chat')
+          setActiveConversation(null)
+          setActivePool(null)
+          setDisplayedPool(null)
+          setShowAdmin(false)
+        }}
       />
       <Sidebar
         open={sidebarOpen && activeSection !== 'admin'}
