@@ -43,6 +43,8 @@ export default function App() {
   // Pools state
   const [pools, setPools] = useState([])
   const [activePool, setActivePool] = useState(null)
+  const [poolTab, setPoolTab] = useState('chats')
+  const [poolCounts, setPoolCounts] = useState({ docs: 0, chats: 0, members: 0 })
 
   // Nav section: 'chat' | 'pools' | 'admin'
   const [activeSection, setActiveSection] = useState('chat')
@@ -448,6 +450,30 @@ export default function App() {
     setShowAdmin(false)
     setActiveSection('pools')
     setActivePool(pool)
+    setPoolTab('chats')
+    setSidebarOpen(true)
+  }
+
+  async function handleDeletePool() {
+    if (!confirm('Pool wirklich löschen? Alle Dokumente und Chats werden gelöscht.')) return
+    setError('')
+    try {
+      await api.deletePool(activePool.id)
+      handleClosePool()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function handleLeavePool() {
+    if (!confirm('Pool wirklich verlassen?')) return
+    setError('')
+    try {
+      await api.removePoolMember(activePool.id, user.id)
+      handleClosePool()
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   async function handleCreatePool(data) {
@@ -503,6 +529,9 @@ export default function App() {
         pools={pools}
         activeId={activePool ? null : activeConversation?.id}
         activePoolId={activePool?.id}
+        activePool={activePool}
+        poolTab={poolTab}
+        poolCounts={poolCounts}
         loading={loading}
         usage={usage}
         assistants={assistants}
@@ -512,6 +541,10 @@ export default function App() {
         onSelectPool={handleSelectPool}
         onCreatePool={handleCreatePool}
         onJoinPool={handleJoinPool}
+        onPoolTabChange={setPoolTab}
+        onClosePool={handleClosePool}
+        onDeletePool={handleDeletePool}
+        onLeavePool={handleLeavePool}
       />
       {showAdmin ? (
         <AdminDashboard onClose={() => { setShowAdmin(false); setActiveSection('chat'); loadModels() }} currentUser={user} />
@@ -520,10 +553,10 @@ export default function App() {
           pool={activePool}
           models={models}
           selectedModel={selectedModel}
-          defaultModelId={defaultModelId}
           user={user}
-          onClose={handleClosePool}
-          onPoolUpdated={loadPools}
+          activeTab={poolTab}
+          onTabChange={setPoolTab}
+          onCountsUpdate={setPoolCounts}
           onError={(msg) => setError(msg)}
         />
       ) : (

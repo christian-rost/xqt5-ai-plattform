@@ -9,13 +9,12 @@ export default function PoolDetail({
   pool,
   models,
   selectedModel,
-  defaultModelId,
   user,
-  onClose,
-  onPoolUpdated,
+  activeTab,
+  onTabChange,
+  onCountsUpdate,
   onError,
 }) {
-  const [activeTab, setActiveTab] = useState('documents')
   const [activeChat, setActiveChat] = useState(null)
   const [chats, setChats] = useState([])
   const [documents, setDocuments] = useState([])
@@ -26,10 +25,15 @@ export default function PoolDetail({
   const [chatImageMode, setChatImageMode] = useState('auto')
   const [error, setError] = useState('')
 
-  const role = pool.role || 'viewer'
-  const canEdit = role === 'editor' || role === 'admin' || role === 'owner'
-  const canAdmin = role === 'admin' || role === 'owner'
-  const isOwner = role === 'owner'
+  // Reset active chat when leaving chats tab
+  useEffect(() => {
+    if (activeTab !== 'chats') setActiveChat(null)
+  }, [activeTab])
+
+  // Report counts to parent (for sidebar display)
+  useEffect(() => {
+    onCountsUpdate?.({ docs: documents.length, chats: chats.length, members: members.length })
+  }, [documents.length, chats.length, members.length])
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -159,12 +163,8 @@ export default function PoolDetail({
           if (updated.messages) {
             const lastMsg = updated.messages[updated.messages.length - 1]
             if (lastMsg && lastMsg.role === 'assistant') {
-              if (sources && sources.length > 0) {
-                lastMsg.sources = sources
-              }
-              if (imageSources && imageSources.length > 0) {
-                lastMsg.image_sources = imageSources
-              }
+              if (sources && sources.length > 0) lastMsg.sources = sources
+              if (imageSources && imageSources.length > 0) lastMsg.image_sources = imageSources
             }
           }
           setActiveChat(updated)
@@ -183,77 +183,12 @@ export default function PoolDetail({
     }
   }
 
-  async function handleDeletePool() {
-    if (!confirm('Pool wirklich löschen? Alle Dokumente und Chats werden gelöscht.')) return
-    try {
-      await api.deletePool(pool.id)
-      onClose()
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  async function handleLeavePool() {
-    if (!confirm('Pool wirklich verlassen?')) return
-    try {
-      await api.removePoolMember(pool.id, user.id)
-      onClose()
-    } catch (e) {
-      setError(e.message)
-    }
-  }
+  const canEdit = ['editor', 'admin', 'owner'].includes(pool.role)
+  const canAdmin = ['admin', 'owner'].includes(pool.role)
 
   return (
     <main className="pool-detail">
-      <div className="pool-detail-header">
-        <div className="pool-detail-title">
-          <span className="pool-detail-icon" style={{ color: pool.color }}>
-            {pool.icon || '\u{1F4DA}'}
-          </span>
-          <div>
-            <h2>{pool.name}</h2>
-            {pool.description && <p className="pool-detail-desc">{pool.description}</p>}
-          </div>
-        </div>
-        <div className="pool-detail-actions">
-          {!isOwner && (
-            <button className="btn btn-secondary btn-small" onClick={handleLeavePool}>
-              Verlassen
-            </button>
-          )}
-          {isOwner && (
-            <button className="btn btn-danger btn-small" onClick={handleDeletePool}>
-              Löschen
-            </button>
-          )}
-          <button className="btn btn-secondary btn-small" onClick={onClose}>
-            Schließen
-          </button>
-        </div>
-      </div>
-
       {error && <p className="error-banner">{error}</p>}
-
-      <div className="pool-tabs">
-        <button
-          className={`pool-tab ${activeTab === 'documents' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('documents'); setActiveChat(null) }}
-        >
-          Dokumente ({documents.length})
-        </button>
-        <button
-          className={`pool-tab ${activeTab === 'chats' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chats')}
-        >
-          Chats ({chats.length})
-        </button>
-        <button
-          className={`pool-tab ${activeTab === 'members' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('members'); setActiveChat(null) }}
-        >
-          Mitglieder ({members.length})
-        </button>
-      </div>
 
       <div className="pool-content">
         {activeTab === 'documents' && (
@@ -297,7 +232,7 @@ export default function PoolDetail({
             poolId={pool.id}
             members={members}
             canAdmin={canAdmin}
-            isOwner={isOwner}
+            isOwner={pool.role === 'owner'}
             currentUserId={user.id}
             onMembersChanged={loadMembers}
           />

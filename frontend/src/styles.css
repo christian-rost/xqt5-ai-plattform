@@ -2475,70 +2475,156 @@ body {
   overflow: hidden;
 }
 
-.pool-detail-header {
+/* ── Pool Nav Panel (in Sidebar) ── */
+
+.pool-nav-back {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+  color: var(--color-text-light);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+.pool-nav-back:hover {
+  color: var(--color-dark);
+}
+
+.pool-nav-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 14px 10px;
   border-bottom: 1px solid var(--color-border);
 }
 
-.pool-detail-title {
+.pool-nav-icon {
+  font-size: 22px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.pool-nav-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-dark);
+  line-height: 1.3;
+}
+
+.pool-nav-desc {
+  font-size: 11px;
+  color: var(--color-text-light);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.pool-nav-role {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-primary);
+}
+
+.pool-nav-tabs {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px;
+  gap: 2px;
+  flex: 1;
+}
+
+.pool-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.pool-detail-icon {
-  font-size: 28px;
-}
-
-.pool-detail-title h2 {
-  font-size: 18px;
-  margin: 0;
-  color: var(--color-dark);
-}
-
-.pool-detail-desc {
-  font-size: 13px;
-  color: var(--color-text-light);
-  margin: 2px 0 0;
-}
-
-.pool-detail-actions {
-  display: flex;
-  gap: 8px;
-}
-
-/* ── Pool Tabs ── */
-
-.pool-tabs {
-  display: flex;
-  border-bottom: 2px solid var(--color-border);
-  padding: 0 24px;
-}
-
-.pool-tab {
-  padding: 12px 20px;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
   background: none;
   border: none;
-  font-size: 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pool-nav-item:hover:not(.active) {
+  background: var(--color-bg);
+}
+
+.pool-nav-item.active {
+  background: rgba(238, 127, 0, 0.1);
+  color: var(--color-primary);
+}
+
+.pool-nav-item.active svg {
+  color: var(--color-primary);
+}
+
+.pool-nav-count {
+  margin-left: auto;
+  font-size: 11px;
   font-weight: 600;
   color: var(--color-text-light);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.2s, border-color 0.2s;
+  background: var(--color-bg);
+  border-radius: 10px;
+  padding: 1px 7px;
 }
 
-.pool-tab:hover {
-  color: var(--color-dark);
-}
-
-.pool-tab.active {
+.pool-nav-item.active .pool-nav-count {
+  background: rgba(238, 127, 0, 0.15);
   color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
 }
+
+.pool-nav-footer {
+  padding: 10px 10px 14px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pool-nav-action {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-light);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.pool-nav-action:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.pool-nav-action--danger {
+  color: #b00020;
+  border-color: #ffb8b8;
+}
+
+.pool-nav-action--danger:hover {
+  background: #ffe2e2;
+}
+
+/* ── Pool Detail Content ── */
 
 .pool-content {
   flex: 1;

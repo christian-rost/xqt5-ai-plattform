@@ -2,6 +2,34 @@ import { useState } from 'react'
 import CreatePoolDialog from './CreatePoolDialog'
 import UsageWidget from './UsageWidget'
 
+function IconDocs() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  )
+}
+
+function IconChats() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+function IconMembers() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  )
+}
+
 export default function Sidebar({
   open,
   section,
@@ -9,6 +37,9 @@ export default function Sidebar({
   pools,
   activeId,
   activePoolId,
+  activePool,
+  poolTab,
+  poolCounts,
   loading,
   usage,
   assistants,
@@ -18,6 +49,10 @@ export default function Sidebar({
   onSelectPool,
   onCreatePool,
   onJoinPool,
+  onPoolTabChange,
+  onClosePool,
+  onDeletePool,
+  onLeavePool,
 }) {
   const [selectedAssistantId, setSelectedAssistantId] = useState('')
   const [joinToken, setJoinToken] = useState('')
@@ -38,9 +73,9 @@ export default function Sidebar({
     }
   }
 
-  // ── Chat Section ──────────────────────────────────────────────────────────
   const panelClass = `content-panel${open ? '' : ' content-panel--hidden'}`
 
+  // ── Chat Section ────────────────────────────────────────────────────────────
   if (section === 'chat') {
     return (
       <div className={panelClass}>
@@ -102,9 +137,7 @@ export default function Sidebar({
                     if (confirm('Konversation löschen?')) onDeleteConversation(item.id)
                   }}
                   title="Löschen"
-                >
-                  ×
-                </button>
+                >×</button>
               </div>
             ))
           )}
@@ -119,24 +152,91 @@ export default function Sidebar({
     )
   }
 
-  // ── Pools Section ─────────────────────────────────────────────────────────
+  // ── Pool Nav Panel (pool selected) ──────────────────────────────────────────
+  if (section === 'pools' && activePool) {
+    const role = activePool.role || 'viewer'
+    const isOwner = role === 'owner'
+    const counts = poolCounts || { docs: 0, chats: 0, members: 0 }
+
+    return (
+      <div className={panelClass}>
+        {/* Back to pool list */}
+        <button className="pool-nav-back" onClick={onClosePool}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Alle Pools
+        </button>
+
+        {/* Pool identity */}
+        <div className="pool-nav-identity">
+          <span className="pool-nav-icon" style={{ color: activePool.color }}>
+            {activePool.icon || '📚'}
+          </span>
+          <div>
+            <div className="pool-nav-name">{activePool.name}</div>
+            {activePool.description && (
+              <div className="pool-nav-desc">{activePool.description}</div>
+            )}
+            <div className="pool-nav-role">{role}</div>
+          </div>
+        </div>
+
+        {/* Tab navigation */}
+        <nav className="pool-nav-tabs">
+          <button
+            className={`pool-nav-item${poolTab === 'documents' ? ' active' : ''}`}
+            onClick={() => onPoolTabChange('documents')}
+          >
+            <IconDocs />
+            <span>Dokumente</span>
+            <span className="pool-nav-count">{counts.docs}</span>
+          </button>
+          <button
+            className={`pool-nav-item${poolTab === 'chats' ? ' active' : ''}`}
+            onClick={() => onPoolTabChange('chats')}
+          >
+            <IconChats />
+            <span>Chats</span>
+            <span className="pool-nav-count">{counts.chats}</span>
+          </button>
+          <button
+            className={`pool-nav-item${poolTab === 'members' ? ' active' : ''}`}
+            onClick={() => onPoolTabChange('members')}
+          >
+            <IconMembers />
+            <span>Mitglieder</span>
+            <span className="pool-nav-count">{counts.members}</span>
+          </button>
+        </nav>
+
+        {/* Footer actions */}
+        <div className="pool-nav-footer">
+          {!isOwner && (
+            <button className="pool-nav-action" onClick={onLeavePool}>
+              Verlassen
+            </button>
+          )}
+          {isOwner && (
+            <button className="pool-nav-action pool-nav-action--danger" onClick={onDeletePool}>
+              Pool löschen
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Pools List ──────────────────────────────────────────────────────────────
   return (
     <div className={panelClass}>
       <div className="content-panel-header">
         <span className="content-panel-title">Pools</span>
         <div className="content-panel-header-actions">
-          <button
-            className="panel-header-btn"
-            onClick={() => setShowJoin(!showJoin)}
-            title="Pool beitreten"
-          >
+          <button className="panel-header-btn" onClick={() => setShowJoin(!showJoin)} title="Pool beitreten">
             + Einladen
           </button>
-          <button
-            className="panel-header-btn panel-header-btn--primary"
-            onClick={() => setShowCreate(true)}
-            title="Pool erstellen"
-          >
+          <button className="panel-header-btn panel-header-btn--primary" onClick={() => setShowCreate(true)} title="Pool erstellen">
             + Neu
           </button>
         </div>
