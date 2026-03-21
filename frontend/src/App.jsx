@@ -199,6 +199,7 @@ export default function App() {
   }
 
   async function onCreateConversation(assistantId = null) {
+    setSidebarOpen(false)
     setLoading(true)
     setError('')
     setActivePool(null)
@@ -228,6 +229,7 @@ export default function App() {
   }
 
   async function onOpenConversation(id) {
+    setSidebarOpen(false)
     setLoading(true)
     setError('')
     setActivePool(null)
@@ -561,7 +563,7 @@ export default function App() {
         onSelectPool={handleSelectPool}
         onCreatePool={handleCreatePool}
         onJoinPool={handleJoinPool}
-        onPoolTabChange={setPoolTab}
+        onPoolTabChange={(tab) => { setPoolTab(tab); setSidebarOpen(false) }}
         onClosePool={handleClosePool}
         onDeletePool={handleDeletePool}
         onLeavePool={handleLeavePool}
