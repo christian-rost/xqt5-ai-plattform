@@ -46,6 +46,7 @@ export default function App() {
 
   // Nav section: 'chat' | 'pools' | 'admin'
   const [activeSection, setActiveSection] = useState('chat')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // Check auth on mount
   useEffect(() => {
@@ -418,6 +419,19 @@ export default function App() {
   }
 
   function handleSectionChange(section) {
+    if (section === 'admin') {
+      setActiveSection('admin')
+      setActivePool(null)
+      setShowAdmin(true)
+      setSidebarOpen(false)
+      return
+    }
+    // Toggle sidebar when clicking the active section again
+    if (section === activeSection && section !== 'admin') {
+      setSidebarOpen((prev) => !prev)
+      return
+    }
+    setSidebarOpen(true)
     setActiveSection(section)
     if (section === 'chat') {
       setActivePool(null)
@@ -425,9 +439,6 @@ export default function App() {
     } else if (section === 'pools') {
       setActiveConversation(null)
       setShowAdmin(false)
-    } else if (section === 'admin') {
-      setActivePool(null)
-      setShowAdmin(true)
     }
   }
 
@@ -485,22 +496,24 @@ export default function App() {
         onAdmin={() => handleSectionChange('admin')}
         onLogout={handleLogout}
       />
-      <Sidebar
-        section={activeSection === 'pools' ? 'pools' : 'chat'}
-        conversations={conversations}
-        pools={pools}
-        activeId={activePool ? null : activeConversation?.id}
-        activePoolId={activePool?.id}
-        loading={loading}
-        usage={usage}
-        assistants={assistants}
-        onCreateConversation={onCreateConversation}
-        onOpenConversation={onOpenConversation}
-        onDeleteConversation={onDeleteConversation}
-        onSelectPool={handleSelectPool}
-        onCreatePool={handleCreatePool}
-        onJoinPool={handleJoinPool}
-      />
+      {sidebarOpen && activeSection !== 'admin' && (
+        <Sidebar
+          section={activeSection === 'pools' ? 'pools' : 'chat'}
+          conversations={conversations}
+          pools={pools}
+          activeId={activePool ? null : activeConversation?.id}
+          activePoolId={activePool?.id}
+          loading={loading}
+          usage={usage}
+          assistants={assistants}
+          onCreateConversation={onCreateConversation}
+          onOpenConversation={onOpenConversation}
+          onDeleteConversation={onDeleteConversation}
+          onSelectPool={handleSelectPool}
+          onCreatePool={handleCreatePool}
+          onJoinPool={handleJoinPool}
+        />
+      )}
       {showAdmin ? (
         <AdminDashboard onClose={() => { setShowAdmin(false); setActiveSection('chat'); loadModels() }} currentUser={user} />
       ) : activePool ? (

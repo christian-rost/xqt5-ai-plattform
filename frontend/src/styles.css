@@ -654,23 +654,23 @@ body {
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px;
+  padding: 24px 80px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 /* Bubble Layout */
 .message {
   display: flex;
   gap: 10px;
-  max-width: min(82%, 760px);
+  max-width: min(78%, 620px);
 }
 
 .message.user {
   align-self: flex-end;
   flex-direction: row-reverse;
-  max-width: min(70%, 620px);
+  max-width: min(65%, 500px);
 }
 
 .message.assistant,
@@ -786,7 +786,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 16px 16px;
+  padding: 8px 80px 20px;
   background: var(--color-white);
   flex-shrink: 0;
 }
@@ -2904,10 +2904,10 @@ body {
 .pool-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px;
+  padding: 24px 80px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 /* .pool-chat-input entfernt — nutzt jetzt .input-form + .input-container */
