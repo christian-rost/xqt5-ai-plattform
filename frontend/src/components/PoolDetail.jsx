@@ -190,54 +190,54 @@ export default function PoolDetail({
     <main className="pool-detail">
       {error && <p className="error-banner">{error}</p>}
 
-      <div className="pool-content">
-        {activeTab === 'documents' && (
-          <PoolDocuments
-            poolId={pool.id}
-            documents={documents}
-            canEdit={canEdit}
-            onUpload={handleUploadDocument}
-            onUploadText={handleUploadText}
-            onDelete={handleDeleteDocument}
-          />
-        )}
+      {activeTab === 'chats' && activeChat ? (
+        <PoolChatArea
+          chat={activeChat}
+          models={models}
+          selectedModel={chatModel}
+          imageMode={chatImageMode}
+          loading={loading}
+          streamingContent={streamingContent}
+          onSend={handleSendMessage}
+          onModelChange={setChatModel}
+          onImageModeChange={setChatImageMode}
+          onBack={() => setActiveChat(null)}
+        />
+      ) : (
+        <div className="pool-content">
+          {activeTab === 'documents' && (
+            <PoolDocuments
+              poolId={pool.id}
+              documents={documents}
+              canEdit={canEdit}
+              onUpload={handleUploadDocument}
+              onUploadText={handleUploadText}
+              onDelete={handleDeleteDocument}
+            />
+          )}
 
-        {activeTab === 'chats' && !activeChat && (
-          <PoolChatList
-            chats={chats}
-            userId={user.id}
-            onOpenChat={handleOpenChat}
-            onCreateChat={handleCreateChat}
-            onDeleteChat={handleDeleteChat}
-          />
-        )}
+          {activeTab === 'chats' && !activeChat && (
+            <PoolChatList
+              chats={chats}
+              userId={user.id}
+              onOpenChat={handleOpenChat}
+              onCreateChat={handleCreateChat}
+              onDeleteChat={handleDeleteChat}
+            />
+          )}
 
-        {activeTab === 'chats' && activeChat && (
-          <PoolChatArea
-            chat={activeChat}
-            models={models}
-            selectedModel={chatModel}
-            imageMode={chatImageMode}
-            loading={loading}
-            streamingContent={streamingContent}
-            onSend={handleSendMessage}
-            onModelChange={setChatModel}
-            onImageModeChange={setChatImageMode}
-            onBack={() => setActiveChat(null)}
-          />
-        )}
-
-        {activeTab === 'members' && (
-          <PoolMembers
-            poolId={pool.id}
-            members={members}
-            canAdmin={canAdmin}
-            isOwner={pool.role === 'owner'}
-            currentUserId={user.id}
-            onMembersChanged={loadMembers}
-          />
-        )}
-      </div>
+          {activeTab === 'members' && (
+            <PoolMembers
+              poolId={pool.id}
+              members={members}
+              canAdmin={canAdmin}
+              isOwner={pool.role === 'owner'}
+              currentUserId={user.id}
+              onMembersChanged={loadMembers}
+            />
+          )}
+        </div>
+      )}
     </main>
   )
 }
