@@ -549,6 +549,12 @@ body {
   padding: 40px 24px;
   text-align: center;
   gap: 12px;
+  margin-left: 220px;
+  transition: margin-left 0.2s ease;
+}
+
+.app--sidebar .welcome {
+  margin-left: 0;
 }
 
 .welcome-logo-mark {
