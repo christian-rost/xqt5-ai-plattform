@@ -61,7 +61,7 @@ export default function Welcome({ onSend, loading }) {
               value={input}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
-              placeholder="Frage stellen, erstelle alles…"
+              placeholder="Fragen stellen, Lösungen erhalten…"
               disabled={loading}
               rows={1}
             />
