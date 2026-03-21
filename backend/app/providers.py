@@ -10,7 +10,7 @@ from .encryption import decrypt_value, encrypt_value
 logger = logging.getLogger(__name__)
 
 # Known providers and their env-var key names
-KNOWN_PROVIDERS = ["openai", "anthropic", "google", "mistral", "x-ai", "azure", "cohere"]
+KNOWN_PROVIDERS = ["openai", "anthropic", "google", "mistral", "x-ai", "azure", "cohere", "mammouth"]
 
 PROVIDER_DISPLAY = {
     "openai": "OpenAI",
@@ -20,6 +20,7 @@ PROVIDER_DISPLAY = {
     "x-ai": "xAI",
     "azure": "Azure OpenAI",
     "cohere": "Cohere",
+    "mammouth": "Mammouth.ai",
 }
 
 

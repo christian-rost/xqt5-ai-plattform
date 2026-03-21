@@ -48,6 +48,12 @@ PROVIDER_CONFIG = {
         "auth_header": "api-key",
         "auth_prefix": "",
     },
+    "mammouth": {
+        "base_url": "https://api.mammouth.ai/v1",
+        "chat_path": "/chat/completions",
+        "auth_header": "Authorization",
+        "auth_prefix": "Bearer ",
+    },
 }
 
 # Available models per provider
@@ -61,6 +67,10 @@ AVAILABLE_MODELS = [
     {"id": "google/gemini-2.5-flash", "provider": "google", "name": "Gemini 2.5 Flash"},
     {"id": "mistral/mistral-large-latest", "provider": "mistral", "name": "Mistral Large"},
     {"id": "x-ai/grok-4", "provider": "x-ai", "name": "Grok 4"},
+    {"id": "mammouth/gpt-5.2", "provider": "mammouth", "name": "Mammouth GPT-5.2"},
+    {"id": "mammouth/gpt-5.1", "provider": "mammouth", "name": "Mammouth GPT-5.1"},
+    {"id": "mammouth/claude-sonnet-4-5", "provider": "mammouth", "name": "Mammouth Claude Sonnet 4.5"},
+    {"id": "mammouth/mistral-large-3", "provider": "mammouth", "name": "Mammouth Mistral Large 3"},
 ]
 
 
