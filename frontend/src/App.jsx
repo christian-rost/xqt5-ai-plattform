@@ -555,7 +555,7 @@ export default function App() {
         onLeavePool={handleLeavePool}
       />
       <div
-        style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
         onClick={() => { if (sidebarOpen) setSidebarOpen(false) }}
       >
         {showAdmin ? (
