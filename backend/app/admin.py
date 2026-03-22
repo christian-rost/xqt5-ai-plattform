@@ -167,7 +167,7 @@ def get_system_stats() -> Dict[str, Any]:
 
 
 def list_model_configs() -> List[Dict[str, Any]]:
-    result = supabase.table("app_model_config").select("*").order("sort_order").execute()
+    result = supabase.table("app_model_config").select("*").order("sort_order").order("model_id").execute()
     return result.data
 
 
