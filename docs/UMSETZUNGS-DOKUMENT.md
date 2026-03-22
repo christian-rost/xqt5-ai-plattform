@@ -558,6 +558,66 @@
 | `20260224_embedding_provider_setting.sql` | `embedding_provider` + `embedding_deployment` in `rag_settings` |
 | `20260225_document_summary.sql` | `summary` in `app_documents` |
 
+### UI/UX Redesign — Overlay Sidebar + Glassmorphism (2026-03-21)
+
+#### Frontend — Overlay Sidebar
+1. **`styles.css`** (`.content-panel`):
+   - `position: absolute; left: 56px; top: 8px; bottom: 8px; width: 248px; z-index: 200`
+   - `background: rgba(255,255,255,0.18); backdrop-filter: blur(16px) saturate(2); -webkit-backdrop-filter: blur(16px) saturate(2)`
+   - `border: 1px solid rgba(255,255,255,0.35); border-radius: 12px`
+   - `box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)`
+   - `.content-panel--hidden`: `opacity: 0; transform: scale(0.93); pointer-events: none`
+   - Transition: `opacity 0.2s cubic-bezier(0.4,0,0.2,1), transform 0.22s cubic-bezier(0.34,1.1,0.64,1)`
+   - `transform-origin: top left` (Genspark-Effekt: Aufgehen von oben links)
+2. **`App.jsx`** — Sidebar-Logik:
+   - `displayedPool` (Hauptbereich) getrennt von `activePool` (Sidebar-Navigation) — Pool-Inhalt bleibt beim "Alle Pools"-Klick sichtbar
+   - `useEffect` mit `document.addEventListener('mousedown', ...)` für Click-Outside-to-Close
+   - `handleSelectPool`: `setSidebarOpen(false)` — Sidebar schließt sich bei Pool-Auswahl
+   - `onPoolTabChange`, `onCreateConversation`, `onOpenConversation`: alle setzen `setSidebarOpen(false)`
+   - Root `<div className="app">` ohne flex-Verschiebung — Sidebar als Overlay
+3. **`NavRail.jsx`**: `onHome`-Prop auf Logo-Div — Klick setzt alle States zurück, zeigt Welcome-Screen
+4. **`Welcome.jsx`**: Placeholder `"Fragen stellen, Lösungen erhalten…"`
+5. **`PoolDetail.jsx`**: `PoolChatArea` außerhalb von `.pool-content` — verhindert doppelte Padding-Kompensation
+
+#### Layout-Vereinfachung
+6. `.messages`, `.pool-messages`, `.input-form`, `.pool-content`: Konsistente `padding: 24px 80px` — keine margin-left-Kompensation mehr nötig (Overlay eliminiert Verschiebungslogik)
+7. `.input-card-textarea`: `min-height: 80px` für komfortablere Eingabe
+
+---
+
+### Mammouth.ai Provider + Admin-Modellverwaltung (2026-03-22)
+
+#### Backend — Mammouth.ai Provider
+1. **`providers.py`**:
+   - `"mammouth"` in `KNOWN_PROVIDERS`
+   - `"mammouth": "Mammouth.ai"` in `PROVIDER_DISPLAY`
+2. **`llm.py`**:
+   - `PROVIDER_CONFIG["mammouth"]`: `base_url: https://api.mammouth.ai/v1`, `chat_path: /chat/completions`, `auth_header: Authorization`, `auth_prefix: Bearer`, `skip_temperature: True`
+   - `_build_openai_compatible_request()`: neuer Parameter `skip_temperature: bool = False` — wenn True, wird `temperature` nicht in den Request-Body aufgenommen
+   - 18 Mammouth-Modelle in `AVAILABLE_MODELS` (Fallback): GPT-5.2/5.1/5, GPT-4.1, Claude Opus 4.6/Sonnet 4.6/4.5/Haiku 4.5, Gemini 3 Pro/2.5 Pro/Flash, Mistral Large 3, DeepSeek V3.2/R1, Grok 4
+3. **`main.py`**: Neuer Endpoint `GET /api/admin/providers/{provider}/models`:
+   - Mammouth: `GET https://api.mammouth.ai/public/models` (öffentlich, kein Auth)
+   - Andere OpenAI-kompatible Provider: `GET {base_url}/models` mit Bearer-Token
+   - Google: `GET {base_url}/models?key={api_key}`
+   - Filtert Embedding-Modelle für Mammouth heraus
+   - Rückgabe: `[{"id": "...", "name": "..."}]`
+
+#### Frontend — Admin Modell-Tab Redesign
+4. **`api.js`**: `adminListProviderModels(provider)` → `GET /api/admin/providers/{provider}/models`
+5. **`AdminDashboard.jsx`** (`ModelsTab`):
+   - Provider-Dropdown (nur Provider mit `source !== 'none'`) statt Freitextfeld
+   - Modell-Dropdown (von Provider-API geladen) statt Freitextfeld; Fallback auf Textinput wenn API keine Modelle liefert
+   - Auto-Fill: `model_id = "{provider}/{model_id}"`, `display_name = model_id`
+   - "Setzen"-Button statt Radio-Button für Default-Modell (keine Browser/React-Konflikte)
+   - "✓ Default"-Badge für das aktive Default-Modell
+   - `loadProviders()` lädt Provider parallel zu Modellen beim Tab-Open
+
+#### Bug-Fixes
+6. **`admin.py`** (`update_model_config()`): Default-Reset nutzt `.neq("id", config_id)` statt `.eq("is_default", True)` — verhindert Silent-Fail bei boolean Supabase-Filter
+7. **`admin.py`** (`list_model_configs()`): Sekundärer Sort `.order("model_id")` für stabile Zeilenreihenfolge bei identischem `sort_order`
+
+---
+
 ## Nächste Umsetzungsschritte
 - Weitere Dokumentformate: Word (.docx), Excel (.xlsx), PowerPoint (.pptx)
 - Multi-Pool-Retrieval: RAG-Suche über mehrere Pools gleichzeitig

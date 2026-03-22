@@ -221,6 +221,30 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   - `main._stream_response()` und `_stream_pool_response()`: `rag_sources` an die jeweilige Speicher-Funktion übergeben
   **Regel: Alle Daten, die nach einem Session-Reload oder einer Navigation sichtbar sein sollen, müssen in der DB persistiert werden — SSE-Events sind flüchtig.**
 
+### 2026-03-21/22 (UI Redesign + Mammouth.ai)
+
+- **Fehler: Doppelte Padding-Kompensation bei Pool-Chat-Bubbles.**
+  Ursache: `.pool-content` und `.pool-messages` hatten beide `calc(220px + 80px)`-Kompensation, weil `PoolChatArea` innerhalb von `.pool-content` gerendert wurde.
+  Korrektur: `PoolChatArea` aus `.pool-content` herausgezogen (sibling, nicht child). **Regel: Layout-Kompensation nur auf dem tatsächlichen Wrapper, nie doppelt.**
+
+- **Fehler: `document.addEventListener` in Wrapper-`<div>` mit `overflow: hidden` brach Scrolling.**
+  Ursache: Wrapper-Div mit `overflow: hidden` blockierte das Scrollen der Message-Liste.
+  Korrektur: Wrapper-Div entfernt, Click-Outside-Handler direkt auf `document`-Ebene mit `mousedown`. **Regel: Für globale Klick-Listener immer `document`-Level verwenden, nie Container mit overflow-Beschränkung als Trap nutzen.**
+
+- **Fehler: Mammouth API error 400 — `temperature` wird nicht unterstützt.**
+  Ursache: Mammouth's OpenAI-kompatibler Endpoint akzeptiert nur den Default-Wert (1) für `temperature`. Jeder explizit gesendete Wert (auch 1.0) führt zu `ContentPolicyViolationError`.
+  Korrektur: `skip_temperature: True` in `PROVIDER_CONFIG["mammouth"]`; `_build_openai_compatible_request()` lässt den Parameter komplett weg. **Regel: Bei neuen Providern immer prüfen, welche Parameter unterstützt werden — insbesondere `temperature`, `stream_options`, `max_tokens` vs. `max_completion_tokens`.**
+
+- **Fehler: Default-Modell springt nach Aktion auf falsches Modell.**
+  Ursache (1): `.eq("is_default", True)` in Supabase Python-Client schlug bei Boolean-Filtern still fehl — mehrere Modelle blieben `is_default=True`.
+  Ursache (2): Identischer `sort_order=0` bei allen Modellen → Supabase gibt Zeilen in nicht-deterministischer Reihenfolge zurück → Default-Badge erschien in falscher Zeile.
+  Korrektur: Reset via `.neq("id", config_id)` (unconditional); sekundärer Sort `.order("model_id")` für stabile Reihenfolge.
+  **Regel: Nie auf Boolean-Filter in Supabase Python-Client verlassen wenn ein positives Ergebnis kritisch ist — stattdessen negativ-Bedingung oder ID-Exclude verwenden.**
+
+- **Fehler: Radio-Button für Default-Modell zeigte falschen Zustand.**
+  Ursache: React `checked`-Prop auf `<input type="radio">` kollidiert mit nativer Browser-Radio-Gruppe-Logik (`name="default_model"` shared) bei async State-Updates.
+  Korrektur: Radio-Button durch expliziten "Setzen"-Button + "✓ Default"-Badge ersetzt. **Regel: Controlled Radio-Buttons mit async Updates in React immer durch explizite Button-Actions ersetzen.**
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).

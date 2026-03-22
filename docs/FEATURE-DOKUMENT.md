@@ -161,6 +161,45 @@ Pools sind geteilte Dokumentensammlungen, in denen mehrere Nutzer Dokumente able
 
 ---
 
+## UI/UX Redesign — Overlay Sidebar + Glassmorphism (umgesetzt 2026-03-21)
+
+### Overlay-Sidebar (Genspark-Style)
+1. **Overlay statt Flex**: Sidebar öffnet sich als `position: absolute` Layer über dem Hauptinhalt — kein Verschieben des Content-Bereichs
+2. **Scale+Fade-Animation**: Einblenden mit `opacity 0→1` + `scale(0.93→1)` von `transform-origin: top left`, Ausblenden umgekehrt — identisch zum Genspark-UI-Pattern
+3. **Frosted Glass**: `background: rgba(255,255,255,0.18)`, `backdrop-filter: blur(16px) saturate(2)`, Border + Box-Shadow für Tiefenwirkung
+4. **Auto-Close**: Sidebar schließt sich automatisch beim Klick außerhalb (document-level `mousedown`-Handler), beim Öffnen einer Konversation, bei Pool-Auswahl und bei Tab-Wechsel
+5. **displayedPool / activePool**: Zwei getrennte States — `activePool` steuert die Sidebar-Navigation, `displayedPool` den Hauptbereich. Pool-Inhalt bleibt beim Navigieren zu "Alle Pools" sichtbar, verschwindet nur bei explizitem Verlassen
+
+### Welcome-Screen + Layout
+6. **Logo → Home**: Klick auf XQT5-Logo in der NavRail kehrt zum Welcome-Screen zurück (alle States zurücksetzen)
+7. **Placeholder**: Eingabefeld zeigt "Fragen stellen, Lösungen erhalten…"
+8. **Zentriertes Layout**: Message-Column und Input-Box nutzen konsistentes `padding: 80px` — kein Shift beim Öffnen/Schließen der Sidebar
+9. **Taller Input**: `min-height: 80px` für das Textarea in der Welcome-Ansicht
+
+---
+
+## Mammouth.ai Provider-Integration (umgesetzt 2026-03-22)
+
+Mammouth.ai ist ein OpenAI-kompatibler API-Aggregator mit Zugang zu Modellen von OpenAI, Anthropic, Google, Mistral, DeepSeek, xAI und anderen.
+
+1. **Provider**: `"mammouth"` in `KNOWN_PROVIDERS`, `PROVIDER_DISPLAY` ("Mammouth.ai"), `PROVIDER_CONFIG` mit `base_url: https://api.mammouth.ai/v1`
+2. **skip_temperature Flag**: Mammouth-Anfragen werden ohne `temperature`-Parameter gesendet (nur Default-Wert 1 unterstützt) — über `PROVIDER_CONFIG["mammouth"]["skip_temperature"] = True`
+3. **18 verfügbare Modelle**: GPT-5.2/5.1/5/4.1, Claude Opus 4.6/Sonnet 4.6/4.5/Haiku 4.5, Gemini 3 Pro/2.5 Pro/Flash, Mistral Large 3, DeepSeek V3.2/R1, Grok 4 und weitere
+4. **Modell-IDs von öffentlicher API**: `https://api.mammouth.ai/public/models` — keine Authentifizierung nötig
+5. **Websuche**: Modelle `sonar-pro` und `sonar-deep-research` (Perplexity) bei Mammouth haben eingebauten Internetzugang
+
+---
+
+## Admin-Modellverwaltung Redesign (umgesetzt 2026-03-22)
+
+1. **Provider-Dropdown**: Nur konfigurierte Provider (API-Key vorhanden) erscheinen in der Auswahl beim Hinzufügen neuer Modelle
+2. **Dynamische Modellliste**: Nach Provider-Auswahl werden Modelle live von der Provider-API geladen (`GET /api/admin/providers/{provider}/models`) — für Mammouth aus dem öffentlichen Endpoint, für andere Provider aus deren `/models`-Endpoint mit API-Key
+3. **Auto-Fill**: Model ID wird automatisch als `provider/model-id` zusammengebaut, Display Name vorausgefüllt
+4. **Default-Modell UX**: "Setzen"-Button statt Radio-Button eliminiert Browser/React-Zustandskonflikte; aktives Default zeigt "✓ Default"-Badge
+5. **Stabile Sortierung**: Sekundärer Sort nach `model_id` verhindert Zeilen-Reordering bei identischem `sort_order`
+
+---
+
 ## Noch geplant
 
 ### Retrieval & Wissensquellen

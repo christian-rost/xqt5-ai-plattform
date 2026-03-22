@@ -1,6 +1,6 @@
 # Admin-Dokumentation
 
-Stand: 22.02.2026
+Stand: 22.03.2026
 Produkt: **XQT5 AI Plattform**
 
 ## 1. Ziel dieser Dokumentation
@@ -59,16 +59,24 @@ Benötigte Keys je Funktion:
 | Chat (Google-Modelle) | Google |
 | Chat (Mistral-Modelle) | Mistral |
 | Chat (xAI-Modelle) | xAI |
+| Chat (Mammouth.ai-Modelle) | Mammouth.ai |
 | Embeddings (Standard) | OpenAI |
 | Embeddings (Azure) | Azure OpenAI |
 | OCR (PDF/Bild-Dokumente) | Mistral |
 | Automatische Zusammenfassung | je nach Default-Modell |
 
-### 4.2 Modelle aktivieren
+### 4.2 Modelle aktivieren und konfigurieren
 
 1. Tab **Modelle** öffnen
-2. Gewünschte Modelle aktivieren (Schalter)
-3. Default-Modell festlegen (wird für Auto-Zusammenfassung und Auto-Titel genutzt)
+2. **Neues Modell hinzufügen** (optional):
+   - "Neues Modell"-Button klicken
+   - **Provider** aus Dropdown wählen (nur Provider mit konfiguriertem API-Key werden angezeigt)
+   - **Modell** aus Dropdown wählen (Liste wird live von der Provider-API geladen)
+   - Display Name anpassen, Sort Order setzen, ggf. Deployment Name (nur Azure)
+3. Gewünschte Modelle aktivieren (Schalter in der Spalte "Aktiviert")
+4. Default-Modell festlegen: "Setzen"-Button klicken (wird für Auto-Zusammenfassung und Auto-Titel genutzt)
+
+> **Hinweis Mammouth.ai**: Bei Mammouth werden alle verfügbaren Modelle direkt aus `https://api.mammouth.ai/public/models` geladen (kein API-Key für den Abruf nötig). Für die eigentliche Nutzung ist ein Mammouth-API-Key im Provider-Tab erforderlich.
 
 ### 4.3 Embedding-Provider wählen
 
@@ -244,3 +252,5 @@ graph TB
 - **Default-Modell**: Wird für Auto-Titel, automatische Dokumentzusammenfassungen und ähnliche Hintergrundprozesse genutzt. Sollte immer gesetzt sein.
 - **Nutzer deaktivieren**: Alle aktiven Sessions werden sofort invalidiert — der Nutzer wird beim nächsten Request ausgeloggt.
 - **PGRST203 / 42P13**: Bei PostgreSQL-Funktionen mit geänderter Signatur oder geändertem Return-Type ist erst `DROP FUNCTION` nötig, bevor `CREATE OR REPLACE` funktioniert.
+- **Mammouth temperature**: Mammouth-Modelle unterstützen keinen `temperature`-Parameter. Der Parameter wird intern automatisch weggelassen — kein manuelles Eingreifen nötig.
+- **Default-Modell**: Immer nur ein Modell kann Default sein. Das Setzen eines neuen Defaults entfernt den alten automatisch. Ist kein Default gesetzt, greifen Backend-Fallbacks (erst `DEFAULT_MODEL` Env-Var, dann erstes verfügbares Modell).
