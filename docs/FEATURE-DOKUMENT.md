@@ -190,6 +190,20 @@ Mammouth.ai ist ein OpenAI-kompatibler API-Aggregator mit Zugang zu Modellen von
 
 ---
 
+## RAGplus Erweiterungen: Listing-Intent + Metadaten-Filter (umgesetzt 2026-03-26)
+
+### Listing-Intent
+28. **Intent-Erkennung "listing"**: Neue Query-Intent-Kategorie neben `summary` und `fact`. Erkennt Fragen wie "welche Dokumente kennst du?", "liste alle Protokolle", "welche Dateien gibt es?" — auf Deutsch und Englisch.
+29. **Vollständige Dokumentliste bei Listing-Anfragen**: Bei `listing`-Intent wird unabhängig vom RAG-Retrieval-Ergebnis immer die vollständige Dokumentliste des Workspaces injiziert — nicht nur die Dokumente der gerade gefundenen Chunks.
+
+### Metadaten-gesteuertes Targeted Retrieval
+30. **Datum- und Typ-Filter aus natürlicher Sprache**: `parse_document_filters()` extrahiert Jahr, Monat (DE/EN) und Dokumenttyp-Keyword aus der Query. Beispiel: "Protokolle vom März 2026" → `{date_from: "2026-03-01", date_to: "2026-03-31", name_pattern: "protokoll"}`.
+31. **Dokument-Vorfilterung via Metadaten**: `fetch_filtered_document_ids()` filtert `app_documents` direkt nach `created_at`-Datum und `filename ILIKE` — keine Supabase-Migration, kein Vektorsuchumweg.
+32. **Targeted Retrieval**: Bei `summary`- oder `listing`-Intent mit Treffern werden **alle** Chunks aus den gefilterten Dokumenten geholt (max. 80, in Dokumentreihenfolge) statt Top-K nach Vektorähnlichkeit.
+33. **Automatischer Fallback**: Wenn der Metadaten-Filter kein Dokument trifft, fällt das System automatisch auf den normalen Hybrid-Search (Vector + BM25 + RRF) zurück.
+
+---
+
 ## Admin-Modellverwaltung Redesign (umgesetzt 2026-03-22)
 
 1. **Provider-Dropdown**: Nur konfigurierte Provider (API-Key vorhanden) erscheinen in der Auswahl beim Hinzufügen neuer Modelle
@@ -263,6 +277,12 @@ Direkte Verarbeitung ohne OCR-Umweg. Besonders für Web-Exporte und Dokumentatio
 
 **Cross-Pool-Suche**
 Globale Volltextsuche über alle Pools + eigene Dokumente in einer einzigen Anfrage. Ergebnisse zeigen die Herkunft (Pool-Name + Dokument).
+
+**Map-Reduce-Zusammenfassung**
+Mehrstufige Zusammenfassung großer Dokumentenmengen: Jedes Dokument wird einzeln zusammengefasst (Map-Phase), die Teilergebnisse werden zu einer Gesamtzusammenfassung kombiniert (Reduce-Phase). Notwendig wenn viele Dokumente den LLM-Kontextrahmen übersteigen würden. Baut direkt auf dem Metadaten-Filter (Targeted Retrieval) auf — die gefilterten Dokument-IDs werden pro Dokument einzeln verarbeitet. Ermöglicht zuverlässige Antworten auf "Fasse alle Protokolle vom März 2026 zusammen", unabhängig von der Gesamtdokumentgröße.
+
+**Metadaten-Filter erweitern**
+Die aktuelle Implementierung filtert nach `created_at` (Uploaddatum) und Dateinamen-Pattern. Ergänzung um inhaltliche Datumsextraktion (Datum im Dokumentinhalt, nicht nur Upload-Datum) und manuelle Tags pro Dokument.
 
 **Metadaten-Filter**
 Suche auf Dokumenttyp, Datum, Tag oder Pool eingrenzen. Beispiel: "Suche nur in Rechnungen aus 2025".
@@ -384,6 +404,19 @@ LLM vergibt beim Upload automatisch Kategorien und Tags basierend auf dem extrah
 
 **Übersetzung**
 Dokumente oder Chat-Antworten on-the-fly übersetzen. Wahlweise beim Upload oder im Chat.
+
+**Bildgenerierung**
+Unterstützung für Bildgenerierungs-Modelle (z. B. DALL-E 3, Flux, Stable Diffusion via API, oder Gemini-Modelle mit nativer Bildausgabe wie `gemini-2.0-flash-exp`). Die aktuelle Architektur unterstützt ausschließlich Text-Modelle — alle Endpunkte, Response-Strukturen und Frontend-Rendering gehen von Text-Output aus.
+
+Nötige Erweiterungen:
+- Neuer Backend-Endpunkt `/api/generate-image` (kein Streaming, kein Chat-Flow)
+- Eigener API-Call zu Bildgenerierungs-Endpunkten (z. B. `/v1/images/generations`) — anderes Request/Response-Format als Chat-Completions
+- Response gibt Image-URL oder Base64 zurück statt Text-Delta
+- Neue Provider-Einträge in `PROVIDER_CONFIG` für Image-Endpunkte
+- Frontend: UI-Einstiegspunkt (z. B. `/image Prompt`-Command im Chat-Input oder separater Tab), `<img>`-Rendering statt Markdown
+- `app_model_config`: Spalte `model_type` mit breiten Werten: `chat`, `image`, `embedding`, `tts`, `video` — erweiterbar ohne Schema-Änderung
+- Admin-Dashboard: separater Tab "Bild-Modelle" neben "Chat-Modelle" — jeder Tab hat eigenes Default-Modell (`is_default` bleibt pro `model_type` eindeutig)
+- Separate Default-Konfiguration: ein Default-Chat-Modell + ein Default-Bild-Modell unabhängig voneinander setzbar
 
 ---
 

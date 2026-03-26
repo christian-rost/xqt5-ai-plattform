@@ -245,6 +245,23 @@ Dieses Dokument hält Coding-Entscheidungen und Fehlerjournal fest, damit Fehler
   Ursache: React `checked`-Prop auf `<input type="radio">` kollidiert mit nativer Browser-Radio-Gruppe-Logik (`name="default_model"` shared) bei async State-Updates.
   Korrektur: Radio-Button durch expliziten "Setzen"-Button + "✓ Default"-Badge ersetzt. **Regel: Controlled Radio-Buttons mit async Updates in React immer durch explizite Button-Actions ersetzen.**
 
+### 2026-03-26 (RAGplus — Listing-Intent + Metadaten-Filter)
+
+- **Design-Entscheidung: Targeted Retrieval bypasses Vektorsuche.**
+  Bei Metadaten-gefilterten Queries (`summary`/`listing` + Datum/Typ-Filter) werden Chunks direkt aus der Tabelle geladen statt per RPC. Das ergibt vollständige Dokumentabdeckung, verzichtet aber auf Ähnlichkeits-Ranking. `similarity=1.0` wird gesetzt (alle Chunks gleich relevant — der Filter hat die Relevanzdefinition übernommen). Chunks kommen in Dokumentreihenfolge (document_id, chunk_index), damit das LLM jedes Dokument linear liest.
+
+- **Design-Entscheidung: Kein RPC-Update für document_ids-Filter.**
+  Statt die Supabase RPCs (`match_document_chunks`, `keyword_search_chunks`) um einen `match_document_ids UUID[]` Parameter zu erweitern (hätte `DROP FUNCTION + CREATE` + Migration erfordert), wird bei Targeted Retrieval die Tabelle direkt abgefragt. Vorteil: keine Migration, keine PGRST203-Gefahr. Nachteil: kein BM25/Vektor-Ranking innerhalb der gefilterten Dokumente — für zukünftige Map-Reduce-Erweiterung ist das akzeptabel.
+
+- **Design-Entscheidung: Datums-Filter auf `created_at` (Upload-Datum), nicht Inhaltsdatum.**
+  `app_documents` hat kein semantisches Datum-Feld — nur `created_at` (Zeitpunkt des Uploads). "Protokolle vom März 2026" trifft also Dokumente, die im März 2026 hochgeladen wurden. Dokumente, die im April hochgeladen aber inhaltlich aus März datieren, werden nicht getroffen. Akzeptabler Kompromiss bis zur Einführung von Dokument-Tagging.
+
+- **Design-Entscheidung: `_MAX_TARGETED_CHUNKS = 80`.**
+  80 Chunks × ~512 Tokens ≈ 40k Tokens Dokumentkontext. Bleibt komfortabel unter dem Limit gängiger Modelle (128k+). Verhindert Context-Overflow bei Pools mit vielen Dokumenten. Bei 15 Dokumenten werden die ersten ~5 Chunks pro Dokument geliefert (hängt von der SQL-ORDER ab).
+
+- **Design-Entscheidung: `listing`-Intent injiziert Dokumentliste zusätzlich zu RAG-Chunks.**
+  Für "welche Dokumente kennst du aus März 2026?" werden sowohl die Targeted-Chunks als auch die vollständige Dokumentnamen-Liste in den LLM-Kontext gegeben. Das LLM kann so exakt beantworten welche Dokumente es gibt — auch wenn ein Dokument keine relevanten Chunks hat (z. B. leerer Inhalt oder Fehler beim Chunking).
+
 ### Offene Risiken
 1. Supabase RLS-Policies sind noch nicht aktiviert.
 2. ~~Kein Rate-Limiting auf LLM-Endpoints~~ — **Gelöst (2026-02-17)**: slowapi Rate Limiting mit Redis-Backend auf allen kritischen Endpoints (siehe Fehlerjournal 2026-02-17).

@@ -557,6 +557,7 @@
 | `20260223_chunk_page_number.sql` | `page_number` in `app_document_chunks`, RPC-Updates |
 | `20260224_embedding_provider_setting.sql` | `embedding_provider` + `embedding_deployment` in `rag_settings` |
 | `20260225_document_summary.sql` | `summary` in `app_documents` |
+| `20260226_rag_sources_persistence.sql` | `rag_sources JSONB` in `chat_messages` + `pool_chat_messages` |
 
 ### UI/UX Redesign — Overlay Sidebar + Glassmorphism (2026-03-21)
 
@@ -618,7 +619,34 @@
 
 ---
 
+### RAGplus Erweiterungen: Listing-Intent + Metadaten-Filter (2026-03-26)
+
+#### Listing-Intent (Commit bd031af)
+1. **`rag.py`** — Neue Intent-Kategorie `"listing"`:
+   - `LISTING_QUERY_KEYWORDS`: Set mit DE/EN Trigger-Phrasen ("welche dokumente", "dokumente kennst du", "list documents", etc.)
+   - `detect_query_intent()`: gibt jetzt `"summary"`, `"listing"` oder `"fact"` zurück
+2. **`main.py`** — `send_message` + `send_pool_message`:
+   - Bei `listing`-Intent: `_build_available_documents_context()` wird zusätzlich zum RAG-Chunk-Kontext injiziert — auch wenn Chunks gefunden wurden
+
+#### Metadaten-Filter / Targeted Retrieval (Commit bd031af)
+3. **`rag.py`** — Neue Konstanten: `_MAX_TARGETED_CHUNKS = 80`, `_MONTH_MAP` (DE+EN Monatsnamen), `_DOC_TYPE_WORDS` (Protokoll, Rechnung, Vertrag, Bericht, Angebot, Gutachten, etc.)
+4. **`rag.py`** — 3 neue Funktionen:
+   - `parse_document_filters(query)`: Regex für Jahr (20[2-9]x), Substring-Match für Monatsnamen, Keyword-Lookup für Dokumenttypen → `{date_from, date_to, name_pattern}`
+   - `fetch_filtered_document_ids(user_id, pool_id, chat_id, filters)`: Supabase-Abfrage auf `app_documents` mit `.gte("created_at", ...)`, `.lte("created_at", ...)`, `.ilike("filename", "%...%")`, scope-aware (pool / chat / global)
+   - `fetch_chunks_for_documents(document_ids)`: direkte Tabellenabfrage auf `app_document_chunks` mit `.in_("document_id", ids)`, geordnet nach (document_id, chunk_index), Batch-Lookup Filenames, `similarity=1.0`
+5. **`rag.py`** — `retrieve_chunks_with_strategy()` erweitert:
+   - Neuer Parameter `document_filters: Optional[Dict[str, Any]] = None`
+   - Bei `intent in ("summary", "listing")` und Treffern: Targeted Retrieval statt Vector-Search
+   - Fallback auf normalen Hybrid-Search wenn Filter 0 Dokumente trifft oder `document_filters` leer ist
+6. **`main.py`** — `send_message` + `send_pool_message`:
+   - `doc_filters = rag_mod.parse_document_filters(payload.content)` vor Retrieval
+   - `document_filters=doc_filters` an `retrieve_chunks_with_strategy()` übergeben
+7. **Keine Supabase-Migration** — direkte Tabellenabfrage statt RPC-Erweiterung
+
+---
+
 ## Nächste Umsetzungsschritte
+- **Map-Reduce-Zusammenfassung**: Dokument-für-Dokument-Zusammenfassung + Combine-Schritt (baut auf Targeted Retrieval auf)
 - Weitere Dokumentformate: Word (.docx), Excel (.xlsx), PowerPoint (.pptx)
 - Multi-Pool-Retrieval: RAG-Suche über mehrere Pools gleichzeitig
 - Nextcloud/SharePoint-Import
