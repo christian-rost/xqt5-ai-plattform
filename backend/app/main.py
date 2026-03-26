@@ -1945,8 +1945,8 @@ async def send_pool_message(
         chat.get("temperature") if chat.get("temperature") is not None else DEFAULT_TEMPERATURE
     )
 
-    # Check if this is the first user message (for auto-naming)
-    is_first_message = not any(m["role"] == "user" for m in chat.get("messages", []))
+    # Auto-name if title is still the default placeholder
+    is_first_message = chat.get("title", "New Chat") == "New Chat"
 
     # Store user message
     pools_mod.add_pool_chat_message(chat_id, "user", payload.content, user_id=current_user["id"])
