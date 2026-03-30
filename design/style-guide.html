@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XQT5 Style Guide</title>
+<style>
+/* ─── Design Tokens ─────────────────────────────────────────── */
+:root {
+  --color-primary:      #ee7f00;
+  --color-primary-dark: #d97200;
+  --color-dark:         #213452;
+  --color-dark-hover:   #3a5279;
+  --color-white:        #ffffff;
+  --color-bg:           #f5f5f5;
+  --color-gray:         #e0e0e0;
+  --color-text:         #333333;
+  --color-text-light:   #666666;
+  --color-success:      #28a745;
+  --color-error:        #dc3545;
+  --color-warning:      #ffc107;
+  --color-border:       #e0e0e0;
+  --shadow-sm:          0 2px 4px rgba(0,0,0,0.08);
+  --shadow-md:          0 4px 12px rgba(0,0,0,0.2);
+  --shadow-lg:          0 16px 40px rgba(0,0,0,0.3);
+  --transition:         0.15s ease;
+}
+
+/* ─── Base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Buttons ───────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-primary   { background: var(--color-primary); color: var(--color-white); }
+.btn-secondary { background: var(--color-gray);    color: var(--color-text); }
+.btn-outline   { background: transparent; border-color: var(--color-primary); color: var(--color-primary); }
+.btn-danger    { background: var(--color-error);   color: var(--color-white); }
+.btn-primary:hover:not(:disabled)   { background: var(--color-primary-dark); }
+.btn-secondary:hover:not(:disabled) { background: #d0d0d0; }
+.btn-outline:hover:not(:disabled)   { background: var(--color-primary); color: var(--color-white); }
+.btn-danger:hover:not(:disabled)    { background: #c82333; }
+.btn-outline-light { background: transparent; border-color: rgba(255,255,255,0.6); color: var(--color-white); }
+.btn-outline-light:hover:not(:disabled) { background: rgba(255,255,255,0.15); border-color: var(--color-white); }
+.btn-sm { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+.btn-xs { padding: 0.2rem 0.5rem;  font-size: 0.75rem; }
+
+/* ─── Card ──────────────────────────────────────────────────── */
+.card {
+  background: var(--color-white);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.card-header {
+  background: var(--color-dark);
+  color: var(--color-white);
+  padding: 0.85rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-body { padding: 1.25rem; }
+
+/* ─── Forms ─────────────────────────────────────────────────── */
+.form-group { margin-bottom: 1rem; }
+.form-group label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  background: var(--color-white);
+  box-sizing: border-box;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  font-family: inherit;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(238,127,0,0.2);
+}
+input:disabled, textarea:disabled, select:disabled {
+  background: var(--color-bg);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.form-error { color: var(--color-error); font-size: 0.8rem; margin-top: 0.35rem; }
+.form-hint  { color: var(--color-text-light); font-size: 0.8rem; margin-top: 0.35rem; }
+
+/* ─── Tabs ──────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--color-gray);
+  margin-bottom: 1.5rem;
+}
+.tab {
+  flex: 1;
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+.tab:hover  { color: var(--color-text); }
+.tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+/* ─── Table ─────────────────────────────────────────────────── */
+.table { width: 100%; border-collapse: collapse; }
+.table th {
+  background: var(--color-bg);
+  padding: 0.65rem 0.85rem;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--color-border);
+}
+.table td {
+  padding: 0.65rem 0.85rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.table tbody tr:hover { background: rgba(238,127,0,0.04); }
+.table .num    { text-align: right; }
+.table .center { text-align: center; }
+.table .cell-mismatch {
+  background: rgba(220,53,69,0.08);
+  border-left: 3px solid var(--color-error);
+}
+
+/* ─── List Items ────────────────────────────────────────────── */
+.list-item {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background-color var(--transition);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.list-item:hover    { background: var(--color-bg); }
+.list-item.selected {
+  background: rgba(238,127,0,0.08);
+  border-left: 3px solid var(--color-primary);
+}
+.list-item-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.list-item-sub {
+  font-size: 0.78rem;
+  color: var(--color-text-light);
+  margin-top: 0.1rem;
+}
+
+/* ─── Badges ────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-primary  { background: rgba(238,127,0,0.12);  color: var(--color-primary); }
+.badge-dark     { background: var(--color-dark);      color: var(--color-white); }
+.badge-success  { background: rgba(40,167,69,0.12);   color: var(--color-success); }
+.badge-error    { background: rgba(220,53,69,0.1);    color: var(--color-error); }
+.badge-warning  { background: rgba(255,193,7,0.15);   color: #856404; }
+.badge-neutral  { background: var(--color-bg);        color: var(--color-text-light); }
+
+/* ─── Filter Bar ────────────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.filter-btn {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-gray);
+  border-radius: 20px;
+  background: none;
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+.filter-btn:hover:not(.active) { border-color: var(--color-dark); color: var(--color-dark); }
+.filter-btn.active             { background: var(--color-dark); color: var(--color-white); border-color: var(--color-dark); }
+
+/* ─── Modal ─────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  padding: 1rem;
+}
+.modal {
+  background: var(--color-white);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  background: var(--color-dark);
+  color: var(--color-white);
+  padding: 1rem 1.5rem;
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.modal-body   { padding: 1.5rem; }
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ─── Loading ───────────────────────────────────────────────── */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--color-text-light);
+  font-size: 0.875rem;
+}
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--color-gray);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.loading-spinner-sm {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: var(--color-white);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Toasts ────────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 1000;
+}
+.toast {
+  padding: 0.75rem 1.25rem;
+  border-radius: 6px;
+  color: var(--color-white);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  animation: toast-in 0.2s ease;
+}
+.toast.success { background: var(--color-success); }
+.toast.error   { background: var(--color-error); }
+.toast.warning { background: #856404; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Login ─────────────────────────────────────────────────── */
+.login-box {
+  background: var(--color-white);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  width: 100%;
+  max-width: 400px;
+}
+.login-logo { text-align: center; margin-bottom: 1.5rem; }
+.login-logo h1 { color: var(--color-dark); font-size: 1.5rem; margin: 0.5rem 0 0; }
+.login-logo span { color: var(--color-primary); }
+
+/* ─── Stat Cards ────────────────────────────────────────────── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.stat-card {
+  background: var(--color-white);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+.stat-card-label {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.35rem;
+}
+.stat-card-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.stat-card-value.primary { color: var(--color-primary); }
+.stat-card-value.success { color: var(--color-success); }
+.stat-card-value.error   { color: var(--color-error); }
+
+/* ─── App Shell (layout pattern demo) ──────────────────────── */
+.header {
+  background: var(--color-dark);
+  color: var(--color-white);
+  padding: 0 2rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; }
+.header-user { display: flex; align-items: center; gap: 1rem; font-size: 0.875rem; }
+.header-username { color: var(--color-primary); font-weight: 600; }
+.nav-tabs { display: flex; gap: 0.25rem; margin-left: 2rem; }
+.nav-tab {
+  padding: 0.35rem 0.85rem;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.875rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: var(--transition);
+  font-family: inherit;
+}
+.nav-tab:hover  { color: var(--color-white); background: rgba(255,255,255,0.1); }
+.nav-tab.active { color: var(--color-white); background: rgba(255,255,255,0.15); }
+
+/* ─── Project-specific extensions ──────────────────────────── */
+.detail-field.mismatch {
+  background: rgba(220,53,69,0.06);
+  border-left: 3px solid var(--color-error);
+  padding-left: 0.65rem;
+}
+.mismatch-icon { color: var(--color-error); margin-left: 0.3rem; }
+.message { padding: 0.75rem 1rem; margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.875rem; }
+.message.user      { background: #fff3e0; border-left: 3px solid var(--color-primary); }
+.message.assistant { background: var(--color-bg); }
+.similarity-bar { height: 6px; background: var(--color-gray); border-radius: 3px; margin-bottom: 0.25rem; }
+.similarity-bar-fill { height: 100%; background: var(--color-primary); border-radius: 3px; }
+.three-col {
+  display: grid;
+  grid-template-columns: minmax(260px, 28%) minmax(380px, 40%) minmax(360px, 32%);
+  gap: 1rem;
+}
+
+/* ─── Viewer chrome ─────────────────────────────────────────── */
+.sg-layout { display: flex; min-height: 100vh; }
+
+.sg-nav {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--color-dark);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  padding: 1.5rem 0;
+  z-index: 100;
+}
+.sg-nav-title {
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 0 1.25rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 0.5rem;
+}
+.sg-nav a {
+  display: block;
+  padding: 0.4rem 1.25rem;
+  color: rgba(255,255,255,0.65);
+  text-decoration: none;
+  font-size: 0.8rem;
+  transition: var(--transition);
+  line-height: 1.4;
+}
+.sg-nav a:hover { color: var(--color-white); background: rgba(255,255,255,0.07); }
+.sg-nav a.active { color: var(--color-primary); }
+
+.sg-main {
+  margin-left: 220px;
+  flex: 1;
+  padding: 2.5rem 3rem;
+  max-width: 900px;
+}
+
+.sg-section {
+  margin-bottom: 4rem;
+  scroll-margin-top: 2rem;
+}
+.sg-section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-dark);
+  margin: 0 0 0.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--color-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.sg-section-num {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  font-weight: 400;
+}
+.sg-demo {
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+.sg-demo-dark {
+  background: var(--color-dark);
+  border: none;
+}
+.sg-demo-bg {
+  background: var(--color-bg);
+}
+.sg-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--color-text-light);
+  margin-bottom: 0.5rem;
+}
+.sg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.sg-row:last-child { margin-bottom: 0; }
+.sg-col { display: flex; flex-direction: column; gap: 0.5rem; }
+.sg-grid-colors {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+.sg-swatch {
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.sg-swatch-color { height: 52px; }
+.sg-swatch-label {
+  background: var(--color-white);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.sg-swatch-name { font-weight: 600; color: var(--color-text); }
+.sg-swatch-hex  { color: var(--color-text-light); }
+.sg-type-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.sg-type-row:last-child { border-bottom: none; }
+.sg-type-meta {
+  width: 200px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+}
+.sg-space-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+.sg-space-vis {
+  height: 20px;
+  background: rgba(238,127,0,0.25);
+  border: 1px solid var(--color-primary);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.sg-space-val { font-size: 0.8rem; color: var(--color-text-light); width: 60px; }
+.sg-layout-mockup {
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+}
+.sg-mock-header {
+  background: var(--color-dark);
+  color: rgba(255,255,255,0.5);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.7rem;
+}
+.sg-mock-body { display: flex; }
+.sg-mock-left {
+  width: 80px;
+  flex-shrink: 0;
+  background: #f0f0f0;
+  padding: 0.5rem;
+  border-right: 1px solid var(--color-border);
+  min-height: 80px;
+}
+.sg-mock-right {
+  flex: 1;
+  padding: 0.5rem;
+  min-height: 80px;
+}
+.sg-mock-sidebar {
+  width: 60px;
+  flex-shrink: 0;
+  background: var(--color-dark);
+  padding: 0.5rem;
+  min-height: 80px;
+  color: rgba(255,255,255,0.4);
+}
+.sg-shadow-demo {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.sg-shadow-box {
+  width: 80px;
+  height: 60px;
+  background: var(--color-white);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+  gap: 0.25rem;
+}
+.sg-checklist {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 1.5rem;
+  font-size: 0.875rem;
+}
+.sg-check-do   { color: var(--color-success); }
+.sg-check-dont { color: var(--color-error); }
+.sg-future-note {
+  background: rgba(255,193,7,0.1);
+  border-left: 3px solid var(--color-warning);
+  padding: 0.75rem 1rem;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+.sg-future-note strong { color: #856404; }
+
+/* hide overlay by default */
+#live-modal-overlay { display: none; }
+#live-modal-overlay.visible { display: flex; }
+</style>
+</head>
+<body>
+
+<div class="sg-layout">
+
+<!-- ── Sidebar nav ── -->
+<nav class="sg-nav">
+  <div class="sg-nav-title">XQT5 Style Guide</div>
+  <a href="#tokens">1. Design Tokens</a>
+  <a href="#typography">2. Typography</a>
+  <a href="#spacing">3. Spacing</a>
+  <a href="#layout">4. Layout Patterns</a>
+  <a href="#card">5. Card</a>
+  <a href="#buttons">6. Buttons</a>
+  <a href="#forms">7. Forms</a>
+  <a href="#tables">8. Tables</a>
+  <a href="#list">9. List Items</a>
+  <a href="#badges">10. Badges</a>
+  <a href="#filterbar">11. Filter Bar</a>
+  <a href="#modals">12. Modals</a>
+  <a href="#loading">13. Loading States</a>
+  <a href="#toasts">14. Toast Notifications</a>
+  <a href="#login">15. Login Page</a>
+  <a href="#stats">16. Stat Cards</a>
+  <a href="#naming">17. CSS Naming</a>
+  <a href="#extensions">18. Project Extensions</a>
+  <a href="#donts">19. Do's & Don'ts</a>
+  <a href="#future">20. Future Changes</a>
+</nav>
+
+<!-- ── Main content ── -->
+<main class="sg-main">
+
+  <!-- 1. Design Tokens -->
+  <section class="sg-section" id="tokens">
+    <h2 class="sg-section-title"><span class="sg-section-num">01</span> Design Tokens</h2>
+
+    <div class="sg-label">Brand & Grays</div>
+    <div class="sg-grid-colors">
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#ee7f00"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-primary</div><div class="sg-swatch-hex">#ee7f00</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#d97200"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-primary-dark</div><div class="sg-swatch-hex">#d97200</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#213452"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-dark</div><div class="sg-swatch-hex">#213452</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#3a5279"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-dark-hover</div><div class="sg-swatch-hex">#3a5279</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#ffffff; border:1px solid #e0e0e0"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-white</div><div class="sg-swatch-hex">#ffffff</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#f5f5f5"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-bg</div><div class="sg-swatch-hex">#f5f5f5</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#e0e0e0"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-gray / --color-border</div><div class="sg-swatch-hex">#e0e0e0</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#333333"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-text</div><div class="sg-swatch-hex">#333333</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#666666"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-text-light</div><div class="sg-swatch-hex">#666666</div></div></div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Semantic</div>
+    <div class="sg-grid-colors">
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#28a745"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-success</div><div class="sg-swatch-hex">#28a745</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#dc3545"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-error</div><div class="sg-swatch-hex">#dc3545</div></div></div>
+      <div class="sg-swatch"><div class="sg-swatch-color" style="background:#ffc107"></div><div class="sg-swatch-label"><div class="sg-swatch-name">--color-warning</div><div class="sg-swatch-hex">#ffc107</div></div></div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Shadows</div>
+    <div class="sg-demo">
+      <div class="sg-shadow-demo">
+        <div class="sg-shadow-box" style="box-shadow: 0 2px 4px rgba(0,0,0,0.08)">
+          <span>--shadow-sm</span>
+        </div>
+        <div class="sg-shadow-box" style="box-shadow: 0 4px 12px rgba(0,0,0,0.2)">
+          <span>--shadow-md</span>
+        </div>
+        <div class="sg-shadow-box" style="box-shadow: 0 16px 40px rgba(0,0,0,0.3)">
+          <span>--shadow-lg</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Typography -->
+  <section class="sg-section" id="typography">
+    <h2 class="sg-section-title"><span class="sg-section-num">02</span> Typography</h2>
+    <div class="sg-demo">
+      <div class="sg-type-row">
+        <div class="sg-type-meta">App title (h1)<br>1.5rem · 700</div>
+        <div style="font-size:1.5rem;font-weight:700;color:var(--color-dark)">Invoice Platform</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Section heading (h2/h3)<br>1.1rem · 600</div>
+        <div style="font-size:1.1rem;font-weight:600">Rechnungsübersicht</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Card / panel header<br>1rem · 600</div>
+        <div style="font-size:1rem;font-weight:600">Bestelldetails</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Body text<br>0.875rem · 400</div>
+        <div style="font-size:0.875rem">Alle Rechnungspositionen werden automatisch abgeglichen.</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Form label<br>0.875rem · 500</div>
+        <div style="font-size:0.875rem;font-weight:500">Lieferantenname</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Table header<br>0.8rem · 600 · UPPERCASE</div>
+        <div style="font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-light)">Betrag (EUR)</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Badge / small tag<br>0.75rem · 600</div>
+        <div style="font-size:0.75rem;font-weight:600">Offen</div>
+      </div>
+      <div class="sg-type-row">
+        <div class="sg-type-meta">Metadata / timestamp<br>0.75rem · 400</div>
+        <div style="font-size:0.75rem;color:var(--color-text-light)">2026-03-04 · 14:22</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Spacing -->
+  <section class="sg-section" id="spacing">
+    <h2 class="sg-section-title"><span class="sg-section-num">03</span> Spacing Scale</h2>
+    <div class="sg-demo">
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        <div class="sg-space-bar"><div class="sg-space-val">0.25rem</div><div class="sg-space-vis" style="width:calc(0.25rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">0.35rem</div><div class="sg-space-vis" style="width:calc(0.35rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">0.5rem</div><div class="sg-space-vis" style="width:calc(0.5rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">0.65rem</div><div class="sg-space-vis" style="width:calc(0.65rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">0.75rem</div><div class="sg-space-vis" style="width:calc(0.75rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">1rem</div><div class="sg-space-vis" style="width:calc(1rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">1.25rem</div><div class="sg-space-vis" style="width:calc(1.25rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">1.5rem</div><div class="sg-space-vis" style="width:calc(1.5rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">2rem</div><div class="sg-space-vis" style="width:calc(2rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">2.5rem</div><div class="sg-space-vis" style="width:calc(2.5rem * 10)"></div></div>
+        <div class="sg-space-bar"><div class="sg-space-val">3rem</div><div class="sg-space-vis" style="width:calc(3rem * 10)"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Layout Patterns -->
+  <section class="sg-section" id="layout">
+    <h2 class="sg-section-title"><span class="sg-section-num">04</span> Layout Patterns</h2>
+
+    <div class="sg-label">4a. App Shell (fixed navy header)</div>
+    <div class="sg-demo" style="padding:0;overflow:hidden">
+      <div style="display:flex;flex-direction:column">
+        <div class="header" style="height:56px;padding:0 1rem">
+          <h1 style="font-size:1rem;margin:0">XQT5 Platform</h1>
+          <div class="header-user">
+            <span class="header-username">admin</span>
+            <button class="btn btn-outline-light btn-xs">Logout</button>
+          </div>
+        </div>
+        <div style="padding:1rem;color:var(--color-text-light);font-size:0.8rem;background:var(--color-bg)">↓ scrollable content area</div>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">4b. Split Panel (list + detail)</div>
+    <div class="sg-demo" style="padding:0.75rem">
+      <div class="sg-layout-mockup">
+        <div class="sg-mock-header">App Header · 56px</div>
+        <div class="sg-mock-body">
+          <div class="sg-mock-left">List panel<br>380px</div>
+          <div class="sg-mock-right">Detail panel · flex: 1</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">4c. Sidebar + Chat</div>
+    <div class="sg-demo" style="padding:0.75rem">
+      <div class="sg-layout-mockup">
+        <div class="sg-mock-header">App Header</div>
+        <div class="sg-mock-body">
+          <div class="sg-mock-sidebar">Sidebar<br>260px</div>
+          <div class="sg-mock-right">Chat area · flex: 1</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">4d. Header Nav Tabs</div>
+    <div class="sg-demo sg-demo-dark" style="padding:0 1.5rem;height:56px;display:flex;align-items:center">
+      <span style="color:var(--color-white);font-weight:700;font-size:1rem">ResourceMgmt</span>
+      <div class="nav-tabs">
+        <button class="nav-tab active">Zeiterfassung</button>
+        <button class="nav-tab">Zeitplanung</button>
+        <button class="nav-tab">Stammdaten</button>
+        <button class="nav-tab">Berichte</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Card -->
+  <section class="sg-section" id="card">
+    <h2 class="sg-section-title"><span class="sg-section-num">05</span> Card</h2>
+    <div class="card">
+      <div class="card-header">
+        Bestelldetails
+        <button class="btn btn-outline-light btn-xs">Bearbeiten</button>
+      </div>
+      <div class="card-body">
+        <p style="margin:0 0 0.75rem;font-size:0.875rem">Bestellnummer: <strong>PO-2026-0042</strong></p>
+        <p style="margin:0;font-size:0.875rem;color:var(--color-text-light)">Erstellt: 2026-03-04</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Buttons -->
+  <section class="sg-section" id="buttons">
+    <h2 class="sg-section-title"><span class="sg-section-num">06</span> Buttons</h2>
+
+    <div class="sg-demo">
+      <div class="sg-label">Variants</div>
+      <div class="sg-row">
+        <button class="btn btn-primary">Primary</button>
+        <button class="btn btn-secondary">Secondary</button>
+        <button class="btn btn-outline">Outline</button>
+        <button class="btn btn-danger">Danger</button>
+      </div>
+
+      <div class="sg-label" style="margin-top:1rem">Sizes — Primary</div>
+      <div class="sg-row">
+        <button class="btn btn-primary">Default</button>
+        <button class="btn btn-primary btn-sm">Small</button>
+        <button class="btn btn-primary btn-xs">XSmall</button>
+      </div>
+
+      <div class="sg-label" style="margin-top:1rem">Disabled</div>
+      <div class="sg-row">
+        <button class="btn btn-primary" disabled>Primary</button>
+        <button class="btn btn-secondary" disabled>Secondary</button>
+        <button class="btn btn-outline" disabled>Outline</button>
+        <button class="btn btn-danger" disabled>Danger</button>
+      </div>
+
+      <div class="sg-label" style="margin-top:1rem">On dark background</div>
+      <div style="background:var(--color-dark);padding:1rem;border-radius:6px;display:flex;gap:0.75rem">
+        <button class="btn btn-outline-light">Outline Light</button>
+        <button class="btn btn-outline-light" disabled>Disabled</button>
+      </div>
+
+      <div class="sg-label" style="margin-top:1rem">Button with inline spinner (loading)</div>
+      <div class="sg-row">
+        <button class="btn btn-primary" style="gap:0.5rem">
+          <span class="loading-spinner-sm"></span>
+          Speichern…
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Forms -->
+  <section class="sg-section" id="forms">
+    <h2 class="sg-section-title"><span class="sg-section-num">07</span> Forms</h2>
+    <div class="sg-demo">
+      <div style="max-width:400px">
+        <div class="form-group">
+          <label>Lieferantenname</label>
+          <input type="text" placeholder="z.B. Müller GmbH">
+        </div>
+        <div class="form-group">
+          <label>E-Mail</label>
+          <input type="email" placeholder="kontakt@beispiel.de">
+          <div class="form-hint">Wird für Benachrichtigungen verwendet.</div>
+        </div>
+        <div class="form-group">
+          <label>Kategorie</label>
+          <select>
+            <option>Bitte wählen…</option>
+            <option>Dienstleistung</option>
+            <option>Material</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notizen</label>
+          <textarea rows="3" placeholder="Freitext…"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Deaktiviert</label>
+          <input type="text" value="Nicht bearbeitbar" disabled>
+        </div>
+        <div class="form-group">
+          <label>Mit Fehler</label>
+          <input type="text" value="ungültig" style="border-color:var(--color-error)">
+          <div class="form-error">Pflichtfeld darf nicht leer sein.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Tabs (within forms or panels)</div>
+    <div class="sg-demo">
+      <div class="tabs">
+        <button class="tab active">Einloggen</button>
+        <button class="tab">Registrieren</button>
+        <button class="tab">Passwort</button>
+      </div>
+      <p style="margin:0;font-size:0.875rem;color:var(--color-text-light)">↑ Tab content appears here</p>
+    </div>
+  </section>
+
+  <!-- 8. Tables -->
+  <section class="sg-section" id="tables">
+    <h2 class="sg-section-title"><span class="sg-section-num">08</span> Tables</h2>
+    <div class="sg-demo" style="padding:0;overflow:hidden">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Position</th>
+            <th>Beschreibung</th>
+            <th class="num">Menge</th>
+            <th class="num">Betrag (EUR)</th>
+            <th class="center">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>001</td>
+            <td>Beratungsleistung März</td>
+            <td class="num">8</td>
+            <td class="num">4.800,00</td>
+            <td class="center"><span class="badge badge-success">OK</span></td>
+          </tr>
+          <tr>
+            <td>002</td>
+            <td>Softwarelizenz</td>
+            <td class="num">1</td>
+            <td class="num cell-mismatch">1.200,00</td>
+            <td class="center"><span class="badge badge-error">Abweichung</span></td>
+          </tr>
+          <tr>
+            <td>003</td>
+            <td>Reisekosten</td>
+            <td class="num">1</td>
+            <td class="num">342,50</td>
+            <td class="center"><span class="badge badge-neutral">Offen</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 9. List Items -->
+  <section class="sg-section" id="list">
+    <h2 class="sg-section-title"><span class="sg-section-num">09</span> List Items (Selectable)</h2>
+    <div class="sg-demo" style="padding:0;overflow:hidden">
+      <div class="list-item">
+        <div>
+          <div class="list-item-title">Rechnung RE-2026-0041</div>
+          <div class="list-item-sub">Müller GmbH · 2026-03-01</div>
+        </div>
+        <span class="badge badge-success">Geprüft</span>
+      </div>
+      <div class="list-item selected">
+        <div>
+          <div class="list-item-title">Rechnung RE-2026-0042</div>
+          <div class="list-item-sub">Schmidt AG · 2026-03-03</div>
+        </div>
+        <span class="badge badge-error">Abweichung</span>
+      </div>
+      <div class="list-item">
+        <div>
+          <div class="list-item-title">Rechnung RE-2026-0043</div>
+          <div class="list-item-sub">Bauer KG · 2026-03-04</div>
+        </div>
+        <span class="badge badge-neutral">Offen</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. Badges -->
+  <section class="sg-section" id="badges">
+    <h2 class="sg-section-title"><span class="sg-section-num">10</span> Badges &amp; Status Indicators</h2>
+    <div class="sg-demo">
+      <div class="sg-row">
+        <span class="badge badge-primary">Primary</span>
+        <span class="badge badge-dark">Dark</span>
+        <span class="badge badge-success">Erfolg</span>
+        <span class="badge badge-error">Fehler</span>
+        <span class="badge badge-warning">Warnung</span>
+        <span class="badge badge-neutral">Neutral</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. Filter Bar -->
+  <section class="sg-section" id="filterbar">
+    <h2 class="sg-section-title"><span class="sg-section-num">11</span> Filter Bar</h2>
+    <div class="sg-demo" style="padding:0;overflow:hidden">
+      <div class="filter-bar">
+        <button class="filter-btn active">Alle (24)</button>
+        <button class="filter-btn">Offen (8)</button>
+        <button class="filter-btn">Geprüft (12)</button>
+        <button class="filter-btn">Abweichung (4)</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12. Modals -->
+  <section class="sg-section" id="modals">
+    <h2 class="sg-section-title"><span class="sg-section-num">12</span> Modals</h2>
+
+    <div class="sg-label">Static preview</div>
+    <div class="modal" style="max-width:540px;box-shadow:var(--shadow-md)">
+      <div class="modal-header">
+        Rechnung löschen?
+        <button class="btn btn-outline-light btn-xs" onclick="document.getElementById('live-modal-overlay').classList.remove('visible')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0;font-size:0.875rem">Diese Aktion kann nicht rückgängig gemacht werden. Soll Rechnung <strong>RE-2026-0042</strong> wirklich gelöscht werden?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm">Abbrechen</button>
+        <button class="btn btn-danger btn-sm">Löschen</button>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Live overlay demo</div>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('live-modal-overlay').classList.add('visible')">Modal öffnen</button>
+  </section>
+
+  <!-- 13. Loading -->
+  <section class="sg-section" id="loading">
+    <h2 class="sg-section-title"><span class="sg-section-num">13</span> Loading States</h2>
+    <div class="sg-demo">
+      <div class="loading" style="padding:2rem">
+        <div class="loading-spinner"></div>
+        Daten werden geladen…
+      </div>
+    </div>
+    <div class="sg-label" style="margin-top:1rem">Inline button spinner</div>
+    <button class="btn btn-primary" style="gap:0.5rem;cursor:default">
+      <span class="loading-spinner-sm"></span>
+      Wird gespeichert…
+    </button>
+  </section>
+
+  <!-- 14. Toasts -->
+  <section class="sg-section" id="toasts">
+    <h2 class="sg-section-title"><span class="sg-section-num">14</span> Toast Notifications</h2>
+    <div class="sg-demo" style="display:flex;flex-direction:column;gap:0.5rem;max-width:360px">
+      <div class="toast success">Rechnung erfolgreich gespeichert.</div>
+      <div class="toast error">Fehler: Verbindung zum Server unterbrochen.</div>
+      <div class="toast warning">Achtung: Abweichung in Position 002 erkannt.</div>
+    </div>
+    <div style="margin-top:1rem">
+      <button class="btn btn-secondary btn-sm" onclick="showToast()">Live-Toast anzeigen</button>
+    </div>
+  </section>
+
+  <!-- 15. Login -->
+  <section class="sg-section" id="login">
+    <h2 class="sg-section-title"><span class="sg-section-num">15</span> Login Page</h2>
+    <div class="sg-demo sg-demo-bg">
+      <div style="display:flex;justify-content:center;padding:1rem">
+        <div class="login-box">
+          <div class="login-logo">
+            <div style="font-size:2rem">🔷</div>
+            <h1>XQT<span>5</span></h1>
+          </div>
+          <div class="tabs">
+            <button class="tab active">Einloggen</button>
+            <button class="tab">Registrieren</button>
+          </div>
+          <div class="form-group">
+            <label>Benutzername</label>
+            <input type="text" placeholder="admin">
+          </div>
+          <div class="form-group">
+            <label>Passwort</label>
+            <input type="password" placeholder="••••••••">
+          </div>
+          <button class="btn btn-primary" style="width:100%">Einloggen</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16. Stat Cards -->
+  <section class="sg-section" id="stats">
+    <h2 class="sg-section-title"><span class="sg-section-num">16</span> Stat Cards (Dashboard)</h2>
+    <div class="sg-demo sg-demo-bg">
+      <div class="stats-row" style="margin-bottom:0">
+        <div class="stat-card">
+          <div class="stat-card-label">Rechnungen gesamt</div>
+          <div class="stat-card-value">247</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Abweichungen</div>
+          <div class="stat-card-value error">18</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Abgestimmt</div>
+          <div class="stat-card-value success">204</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Gesamtbetrag</div>
+          <div class="stat-card-value primary">€1.2M</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 17. CSS Naming -->
+  <section class="sg-section" id="naming">
+    <h2 class="sg-section-title"><span class="sg-section-num">17</span> CSS Naming Conventions</h2>
+    <div class="sg-demo">
+      <p style="font-size:0.875rem;margin:0 0 1rem">Pattern: <code>component</code> → <code>component-element</code> → <code>component-element modifier-class</code></p>
+      <table class="table">
+        <thead><tr><th>Class</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>.card</code></td><td>Block</td></tr>
+          <tr><td><code>.card-header</code></td><td>Element</td></tr>
+          <tr><td><code>.card-header.sticky</code></td><td>Modifier via extra class</td></tr>
+          <tr><td><code>.btn</code></td><td>Block</td></tr>
+          <tr><td><code>.btn-primary</code></td><td>Variant modifier</td></tr>
+          <tr><td><code>.btn-sm</code></td><td>Size modifier</td></tr>
+          <tr><td><code>.badge-success</code></td><td>Semantic variant</td></tr>
+          <tr><td><code>.list-item.selected</code></td><td>State via extra class</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:0.8rem;margin:1rem 0 0;color:var(--color-text-light)">State classes: <code>.selected</code> <code>.active</code> <code>.disabled</code> <code>.loading</code> <code>.expanded</code> <code>.mismatch</code> <code>.error</code></p>
+    </div>
+  </section>
+
+  <!-- 18. Project Extensions -->
+  <section class="sg-section" id="extensions">
+    <h2 class="sg-section-title"><span class="sg-section-num">18</span> Project-Specific Extensions</h2>
+
+    <div class="sg-label">Mismatch Highlighting (view-invoices)</div>
+    <div class="sg-demo">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;max-width:480px;font-size:0.875rem">
+        <div class="detail-field" style="padding:0.5rem;background:var(--color-bg);border-radius:4px">
+          <div style="font-size:0.75rem;color:var(--color-text-light)">Nettobetrag (Rechnung)</div>
+          <div style="font-weight:600">4.800,00 €</div>
+        </div>
+        <div class="detail-field mismatch" style="padding:0.5rem;border-radius:4px">
+          <div style="font-size:0.75rem;color:var(--color-text-light)">Nettobetrag (Bestellung)</div>
+          <div style="font-weight:600">4.500,00 €<span class="mismatch-icon">⚠</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Chat Messages (xqt5-ai-platform)</div>
+    <div class="sg-demo">
+      <div class="message user">Welche Lieferanten haben offene Abweichungen?</div>
+      <div class="message assistant">Es gibt aktuell 3 Lieferanten mit offenen Abweichungen: Müller GmbH, Schmidt AG und Weber KG.</div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Similarity Bar (stammdatenmanagement)</div>
+    <div class="sg-demo">
+      <div style="max-width:300px;font-size:0.875rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+          <span>Müller GmbH vs. Mueller GmbH</span>
+          <strong>87%</strong>
+        </div>
+        <div class="similarity-bar"><div class="similarity-bar-fill" style="width:87%"></div></div>
+        <div style="display:flex;justify-content:space-between;margin:0.75rem 0 0.25rem">
+          <span>Bauer KG vs. Bauer KG & Co.</span>
+          <strong>62%</strong>
+        </div>
+        <div class="similarity-bar"><div class="similarity-bar-fill" style="width:62%"></div></div>
+      </div>
+    </div>
+
+    <div class="sg-label" style="margin-top:1.25rem">Three-Column Layout (insAIghts)</div>
+    <div class="sg-demo" style="padding:0.75rem">
+      <div class="sg-layout-mockup">
+        <div class="sg-mock-header">insAIghts App</div>
+        <div class="three-col" style="font-size:0.7rem;color:var(--color-text-light)">
+          <div style="padding:0.5rem;border-right:1px solid var(--color-border);min-height:60px">Dokument-<br>liste (28%)</div>
+          <div style="padding:0.5rem;border-right:1px solid var(--color-border)">Extraktion (40%)</div>
+          <div style="padding:0.5rem">Ontologie (32%)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 19. Do's and Don'ts -->
+  <section class="sg-section" id="donts">
+    <h2 class="sg-section-title"><span class="sg-section-num">19</span> Do's and Don'ts</h2>
+    <div class="sg-demo">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+        <div>
+          <div class="sg-label" style="color:var(--color-success)">✓ Do</div>
+          <ul style="font-size:0.875rem;line-height:1.8;margin:0;padding-left:1.25rem">
+            <li>Use CSS variables for every color and shadow</li>
+            <li>Use the defined spacing scale</li>
+            <li>Navy headers on cards, panels, and modals</li>
+            <li>Orange for primary actions, focus rings, selected states</li>
+            <li>System font stack — no Google Fonts</li>
+            <li><code>transition: var(--transition)</code> on interactive elements</li>
+            <li><code>cursor: not-allowed</code> + <code>opacity: 0.6</code> for disabled</li>
+          </ul>
+        </div>
+        <div>
+          <div class="sg-label" style="color:var(--color-error)">✗ Don't</div>
+          <ul style="font-size:0.875rem;line-height:1.8;margin:0;padding-left:1.25rem">
+            <li>Invent new colors outside the palette</li>
+            <li>Use inline styles (except for dynamic JS values)</li>
+            <li>Shadows heavier than <code>--shadow-lg</code></li>
+            <li>Border-radius &gt;10px or &lt;4px</li>
+            <li>Center-align body text in data-heavy views</li>
+            <li>More than 3 font sizes per component</li>
+            <li>External CSS frameworks (Bootstrap, Tailwind…)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 20. Future Changes -->
+  <section class="sg-section" id="future">
+    <h2 class="sg-section-title"><span class="sg-section-num">20</span> Potential Future Changes</h2>
+    <div class="sg-demo">
+      <div class="sg-future-note"><strong>Token System:</strong> <code>--color-gray</code> and <code>--color-border</code> are identical (#e0e0e0) — one is redundant. Hardcoded RGBA values (rgba(238,127,0,…)) and #856404 leak through without tokens.</div>
+      <div class="sg-future-note"><strong>Spacing contradiction:</strong> Scale says "no in-between values" but sections 7/8/9 use 0.6rem, 0.85rem, 0.78rem — all off-scale.</div>
+      <div class="sg-future-note"><strong>Typography gaps:</strong> No <code>line-height</code> defined. Sizes 0.78rem, 0.9rem, 1.75rem used in components but missing from the scale table.</div>
+      <div class="sg-future-note"><strong>Naming contradiction:</strong> Convention says <code>component-element--modifier</code> (double dash) but every example uses single dashes. Unprefixed state classes (.error, .selected) risk collisions.</div>
+      <div class="sg-future-note"><strong>Missing patterns:</strong> Z-index scale, empty states, responsive split panel, checkbox/radio inputs, modal close button style, textarea resize guidance.</div>
+      <div class="sg-future-note"><strong>Mixed units:</strong> Section 4c sidebar uses <code>padding: 16px</code> (pixels) while everything else uses <code>rem</code>.</div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<!-- Live modal overlay -->
+<div id="live-modal-overlay" class="modal-overlay" onclick="this.classList.remove('visible')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      Aktion bestätigen
+      <button class="btn btn-outline-light btn-xs" onclick="document.getElementById('live-modal-overlay').classList.remove('visible')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0;font-size:0.875rem">Dies ist eine Live-Overlay-Demo. Klicke außerhalb oder auf ✕ zum Schließen.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('live-modal-overlay').classList.remove('visible')">Abbrechen</button>
+      <button class="btn btn-primary btn-sm" onclick="document.getElementById('live-modal-overlay').classList.remove('visible')">Bestätigen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+function showToast() {
+  const container = document.getElementById('toast-container');
+  const types = ['success', 'error', 'warning'];
+  const msgs = ['Änderungen gespeichert.', 'Verbindungsfehler aufgetreten.', 'Abweichung in Position 003.'];
+  const i = Math.floor(Math.random() * 3);
+  const t = document.createElement('div');
+  t.className = 'toast ' + types[i];
+  t.textContent = msgs[i];
+  container.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// Highlight active nav link on scroll
+const sections = document.querySelectorAll('.sg-section');
+const navLinks = document.querySelectorAll('.sg-nav a');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      navLinks.forEach(l => l.classList.remove('active'));
+      const active = document.querySelector(`.sg-nav a[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { threshold: 0.3 });
+sections.forEach(s => observer.observe(s));
+
+// Tab interactivity
+document.querySelectorAll('.tabs').forEach(tabs => {
+  tabs.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+});
+
+// Nav tabs interactivity
+document.querySelectorAll('.nav-tabs').forEach(group => {
+  group.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      group.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+});
+
+// Filter bar interactivity
+document.querySelectorAll('.filter-bar').forEach(bar => {
+  bar.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      bar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+});
+</script>
+</body>
+</html>
