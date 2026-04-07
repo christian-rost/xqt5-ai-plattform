@@ -403,6 +403,7 @@ Sourced from `kvml_test/` — the tender is not the goal, but the feature requir
   - UI: drag-and-drop canvas or sequential step list (step list is lower effort and sufficient for initial version)
   - Depends on MCP support for tool execution
   - File: new `WorkflowEditor.jsx`, `workflows.py` router, `app_workflows` table
+  - maybe use existing agent builder in the form of flowise (apache2.0) and integrate into the xqt5-ai workplace
 
 - [ ] 🟠 **SharePoint RAG connector** — ~4–5 days *(NOW: KK2)*
   - Connect to Microsoft SharePoint via Microsoft Graph API (`/sites/{site}/drives/{drive}/items`)
