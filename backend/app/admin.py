@@ -12,6 +12,10 @@ DEFAULT_RAG_SETTINGS = {
     "rerank_model": "rerank-v3.5",
     "embedding_provider": "openai",
     "embedding_deployment": "",
+    "contextual_retrieval_enabled": False,
+    "contextual_retrieval_model": "claude-haiku-4-5-20251001",
+    "neighbor_chunks_enabled": True,
+    "max_context_tokens": 6000,
 }
 
 
@@ -250,7 +254,8 @@ def get_rag_settings() -> Dict[str, Any]:
 
 def update_rag_settings(**fields: Any) -> Dict[str, Any]:
     current = get_rag_settings()
-    allowed = {"rerank_enabled", "rerank_candidates", "rerank_top_n", "rerank_model", "embedding_provider", "embedding_deployment"}
+    allowed = {"rerank_enabled", "rerank_candidates", "rerank_top_n", "rerank_model", "embedding_provider", "embedding_deployment",
+               "contextual_retrieval_enabled", "contextual_retrieval_model", "neighbor_chunks_enabled", "max_context_tokens"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return current
@@ -264,6 +269,10 @@ def update_rag_settings(**fields: Any) -> Dict[str, Any]:
         merged["rerank_top_n"] = merged["rerank_candidates"]
     merged["embedding_provider"] = merged.get("embedding_provider", "openai") if merged.get("embedding_provider") in ("openai", "azure") else "openai"
     merged["embedding_deployment"] = str(merged.get("embedding_deployment", "")).strip()
+    merged["contextual_retrieval_enabled"] = bool(merged.get("contextual_retrieval_enabled", False))
+    merged["contextual_retrieval_model"] = str(merged.get("contextual_retrieval_model", "claude-haiku-4-5-20251001")).strip() or "claude-haiku-4-5-20251001"
+    merged["neighbor_chunks_enabled"] = bool(merged.get("neighbor_chunks_enabled", True))
+    merged["max_context_tokens"] = max(1000, min(32000, int(merged.get("max_context_tokens", 6000))))
 
     row = {"key": "rag_settings", "value": merged}
     result = supabase.table("app_runtime_config").upsert(row, on_conflict="key").execute()

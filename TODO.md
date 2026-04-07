@@ -35,50 +35,48 @@ These features exist in `xqt5-ai-plattform-dri` but are absent from the current 
 
 ### RAG Backend — Port from dri into latest
 
-- [ ] ✅🟠 **Phase 1.1 — Relevance gate** (`apply_relevance_gate()`)
+- [x] ✅🟠 **Phase 1.1 — Relevance gate** (`apply_relevance_gate()`) — **DONE 2026-04-07**
   - Discards all chunks when `max(similarity) < RAG_RELEVANCE_GATE` (default: 0.35)
   - Includes the RRF score bug fix (separate `rrf_score` field, `similarity` always holds raw cosine)
   - Files: `rag.py`, `config.py` (new `RAG_RELEVANCE_GATE` env var)
 
-- [ ] ✅🟠 **Phase 1.2 — Full source citations**
+- [x] ✅🟠 **Phase 1.2 — Full source citations** — **DONE 2026-04-07**
   - `build_rag_context()` outputs page number + section breadcrumb path in source header
   - Format: `datei.pdf | Seite 12 | §3.1 Titel (Relevanz: 87%)`
   - `rag_sources` array to frontend includes `page_number`, `section_path`, `chunk_index`
   - Files: `rag.py`, `main.py`
 
-- [ ] ✅🟠 **Phase 4.2 — Contextual retrieval** (Anthropic technique, opt-in)
+- [x] ✅🟠 **Phase 4.2 — Contextual retrieval** (Anthropic technique, opt-in) — **DONE 2026-04-07**
   - `_generate_chunk_context()` prepends a 1-sentence LLM-generated context to each chunk before embedding
   - Runs via `asyncio.gather` for parallel batch processing per document
   - Opt-in: admin toggle `contextual_retrieval_enabled` + configurable model (`contextual_retrieval_model`)
   - Only applies to newly uploaded documents; existing docs need re-chunking
-  - Files: `rag.py`, `admin.py`, `models.py`, `AdminDashboard.jsx`
+  - Files: `rag.py`, `admin.py`, `models.py` — note: `AdminDashboard.jsx` frontend toggles NOT yet added
 
-- [ ] ✅🟠 **Phase 4.3 — Document summary on upload**
-  - **Verify first:** `_summarize_document()` appears to already exist in `main.py` of the latest repo — confirm it is wired up in both upload endpoints and actually populates `app_documents.summary` before treating this as done
-  - `_summarize_document()` generates 2–3 sentence summary after chunking
-  - Stored in `app_documents.summary` (column already exists, previously never populated)
+- [x] ✅🟠 **Phase 4.3 — Document summary on upload** — **DONE (pre-existing)**
+  - `_summarize_document()` confirmed present in `main.py`, wired up in both upload endpoints, populates `app_documents.summary`
   - Files: `main.py`, `documents.py`
 
-- [ ] ✅🟠 **Phase 5.1 — Table-aware chunking**
+- [x] ✅🟠 **Phase 5.1 — Table-aware chunking** — **DONE 2026-04-07**
   - `_table_to_atoms()` treats Markdown table blocks as atomic units
   - Oversized tables split only at row boundaries; each continuation chunk starts with `[Tabellenfortsetzung — Spalten: …]`
   - `_units_with_table_awareness()` replaces `_split_into_units()` in section splitting loop
   - Files: `rag.py`
 
-- [ ] ✅🟠 **Phase 5.3 — Neighbor chunk retrieval**
+- [x] ✅🟠 **Phase 5.3 — Neighbor chunk retrieval** — **DONE 2026-04-07**
   - `enrich_with_neighbors()` fetches `chunk_index ± 1` for top-3 results after relevance gate
   - Neighbor chunks get `similarity = parent_similarity × 0.85` and `is_neighbor = true`
   - Results sorted by `document_id + chunk_index` for sequential reading
   - Opt-in: admin toggle `neighbor_chunks_enabled` (default: true)
-  - Files: `rag.py`, `main.py`, `admin.py`, `models.py`, `AdminDashboard.jsx`
+  - Files: `rag.py`, `main.py`, `admin.py`, `models.py` — note: `AdminDashboard.jsx` frontend toggle NOT yet added
 
-- [ ] ✅🟠 **Phase 7.1 — Token-budget context assembly**
+- [x] ✅🟠 **Phase 7.1 — Token-budget context assembly** — **DONE 2026-04-07**
   - `build_rag_context(max_tokens=6000)` fills chunks by relevance until budget exhausted
   - Skipped chunks are logged; prevents 50-chunk context from dominating the LLM window
   - `max_context_tokens` configurable up to 32,000 in admin settings
-  - Files: `rag.py`, `main.py`, `admin.py`, `models.py`, `AdminDashboard.jsx`
+  - Files: `rag.py`, `main.py`, `admin.py`, `models.py` — note: `AdminDashboard.jsx` frontend slider NOT yet added
 
-- [ ] ✅🟠 **Phase 7.2 — XML structured context format**
+- [x] ✅🟠 **Phase 7.2 — XML structured context format** — **DONE 2026-04-07**
   - `build_rag_context()` now outputs XML-tagged blocks instead of `--- Source N ---`
   - Format per Anthropic prompting best practices:
     ```xml
@@ -93,7 +91,7 @@ These features exist in `xqt5-ai-plattform-dri` but are absent from the current 
 
 ### Additional Backend Changes in dri — Port to latest
 
-- [ ] 🟠 **`main.py`: Update `_apply_document_access_policy()`**
+- [x] 🟠 **`main.py`: Update `_apply_document_access_policy()`** — **DONE 2026-04-07**
   - Current (2-part): don't claim no access + base answer on context
   - New (3-part, from dri):
     1. Use document context ONLY when directly relevant to the user's question
@@ -106,6 +104,8 @@ These features exist in `xqt5-ai-plattform-dri` but are absent from the current 
 ## Part 2: RAG Pipeline — Open Items (from RAG-VERBESSERUNGSPLAN.md / RAG-STATUS.md)
 
 These are planned but not yet implemented in either repo.
+
+- another idea: implement "add folder feature" where you press in the folder and upload a complete folder not just single files. this should make it easier to analyse code and get a jist of complex projects
 
 ### No DB Schema Required
 

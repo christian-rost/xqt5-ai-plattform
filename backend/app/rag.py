@@ -10,6 +10,7 @@ from .config import (
     CHUNK_SIZE,
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
+    RAG_RELEVANCE_GATE,
     RAG_SIMILARITY_THRESHOLD,
     RAG_TOP_K,
 )
@@ -36,6 +37,11 @@ _SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ\d\"])")
 
 # Page markers injected by documents.py during OCR extraction
 _PAGE_MARKER_RE = re.compile(r"^<!-- page:(\d+) -->$")
+
+# Markdown table: any non-empty line that starts with |
+_TABLE_LINE_RE = re.compile(r"^\s*\|")
+# Markdown separator row: |---|---| or |:---:|
+_TABLE_SEP_RE = re.compile(r"^\s*\|[\s\-:|]+\|")
 
 # Module-level tiktoken encoder (lazy-loaded once, then cached)
 _encoder = None
@@ -84,6 +90,87 @@ def _split_into_units(text: str) -> List[str]:
             parts = _SENT_SPLIT_RE.split(line)
             units.extend(parts)
     return units
+
+
+def _table_to_atoms(table_text: str, chunk_size: int, prefix_tokens: int) -> List[str]:
+    """Convert a markdown table block to one or more pre-sized chunk atoms (Phase 5.1).
+
+    If the whole table fits within the token budget, it is returned as a single atom.
+    Otherwise it is split only at row boundaries, and the column-header row is
+    repeated at the start of every continuation chunk so the LLM always sees the
+    column context alongside the data.
+    """
+    budget = chunk_size - prefix_tokens - 10  # small safety margin
+    if _tok(table_text) <= budget:
+        return [table_text]
+
+    lines = table_text.split("\n")
+
+    # Identify header rows: row 0 (column names) + optional row 1 (separator |---|)
+    header_lines: List[str] = [lines[0]] if lines else []
+    data_start = 1
+    if len(lines) > 1 and _TABLE_SEP_RE.match(lines[1]):
+        header_lines.append(lines[1])
+        data_start = 2
+
+    data_lines = lines[data_start:]
+    result: List[str] = []
+    row_buf: List[str] = list(header_lines)
+    row_buf_tokens = _tok("\n".join(row_buf)) + 1
+
+    for row in data_lines:
+        row_tokens = _tok(row) + 1
+        if row_buf_tokens + row_tokens > budget and len(row_buf) > len(header_lines):
+            result.append("\n".join(row_buf))
+            cont_note = f"[Tabellenfortsetzung — Spalten: {lines[0]}]"
+            row_buf = [cont_note] + (header_lines[1:] if len(header_lines) > 1 else [])
+            row_buf_tokens = _tok("\n".join(row_buf)) + 1
+        row_buf.append(row)
+        row_buf_tokens += row_tokens
+
+    if row_buf:
+        result.append("\n".join(row_buf))
+
+    return result or [table_text]
+
+
+def _units_with_table_awareness(
+    content: str, chunk_size: int, prefix_tokens: int
+) -> List[str]:
+    """Replace _split_into_units for table-aware section splitting (Phase 5.1).
+
+    Contiguous markdown table lines are extracted as atomic blocks and pre-sized
+    via _table_to_atoms so they are never split mid-row. Non-table prose is
+    delegated to _split_into_units as before.
+    """
+    atoms: List[str] = []
+    prose_lines: List[str] = []
+    table_lines: List[str] = []
+    in_table = False
+
+    for line in content.split("\n"):
+        is_tbl = bool(line.strip() and _TABLE_LINE_RE.match(line))
+        if is_tbl:
+            if not in_table:
+                if prose_lines:
+                    atoms.extend(_split_into_units("\n".join(prose_lines)))
+                    prose_lines = []
+                in_table = True
+            table_lines.append(line)
+        else:
+            if in_table:
+                atoms.extend(_table_to_atoms("\n".join(table_lines), chunk_size, prefix_tokens))
+                table_lines = []
+                in_table = False
+            prose_lines.append(line)
+
+    # Flush remaining
+    if table_lines:
+        atoms.extend(_table_to_atoms("\n".join(table_lines), chunk_size, prefix_tokens))
+    if prose_lines:
+        atoms.extend(_split_into_units("\n".join(prose_lines)))
+
+    return atoms
 
 
 def _overlap_tail(units: List[str], overlap_tokens: int) -> List[str]:
@@ -195,7 +282,7 @@ def chunk_text(
             continue
 
         # Section too large — split at unit boundaries
-        units = _split_into_units(content)
+        units = _units_with_table_awareness(content, chunk_size, prefix_tokens)
         buf: List[str] = []
         buf_tokens = prefix_tokens
 
@@ -535,6 +622,20 @@ async def process_document(document_id: str, text: str, user_id: str) -> Tuple[i
         documents_mod.update_document_status(document_id, "error", error_message="No text extracted")
         return 0, 0
 
+    # Phase 4.2 — Contextual Retrieval: optionally prefix each chunk with LLM-generated context
+    from . import admin as admin_crud  # noqa: PLC0415
+    rag_settings = admin_crud.get_rag_settings()
+    if rag_settings.get("contextual_retrieval_enabled"):
+        cr_model = str(rag_settings.get("contextual_retrieval_model", "claude-haiku-4-5-20251001")).strip() or "claude-haiku-4-5-20251001"
+        try:
+            logger.info(
+                "Kontextuelles Retrieval: %d Chunks werden angereichert (model=%s, doc=%s)",
+                len(chunk_pairs), cr_model, document_id,
+            )
+            chunk_pairs = await _apply_contextual_retrieval(chunk_pairs, document_text=text, model=cr_model)
+        except Exception as e:
+            logger.warning("Kontextuelles Retrieval fehlgeschlagen, verwende einfache Chunks: %s", e)
+
     chunk_texts_only = [c for c, _ in chunk_pairs]
     try:
         embeddings = await generate_embeddings(chunk_texts_only)
@@ -679,7 +780,7 @@ def _reciprocal_rank_fusion(
     sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)
     merged = [chunk_map[cid] for cid in sorted_ids]
     for chunk in merged:
-        chunk["similarity"] = scores[chunk.get("id", "")]
+        chunk["rrf_score"] = scores[chunk.get("id", "")]
     return merged
 
 
@@ -1021,19 +1122,208 @@ async def rechunk_all_documents(
     return {"processed": processed, "failed": failed, "skipped": skipped, "total": len(docs)}
 
 
-def build_rag_context(chunks: List[Dict[str, Any]]) -> str:
-    """Format retrieved chunks into a context string for the LLM."""
+async def enrich_with_neighbors(
+    chunks: List[Dict[str, Any]],
+    top_n: int = 3,
+) -> List[Dict[str, Any]]:
+    """Fügt ±1 Nachbar-Chunks für die Top-N-Treffer hinzu (Phase 5.3).
+
+    Stellt abgeschnittenen Kontext an Chunk-Grenzen wieder her, ohne Schema-Änderungen
+    zu erfordern. Nur die Top-N-Chunks (nach Ähnlichkeit) werden erweitert, um die
+    Anzahl der DB-Abfragen zu begrenzen. Alle Chunks werden nach document_id + chunk_index
+    sortiert zurückgegeben, damit das LLM das Dokument sequenziell liest.
+    """
+    if not chunks:
+        return chunks
+
+    sorted_by_sim = sorted(chunks, key=lambda c: c.get("similarity", 0.0), reverse=True)
+    top_chunks = sorted_by_sim[:top_n]
+
+    existing_ids: set = {c.get("id") for c in chunks}
+    neighbor_chunks: List[Dict[str, Any]] = []
+
+    for chunk in top_chunks:
+        doc_id = chunk.get("document_id")
+        idx = chunk.get("chunk_index", 0)
+        if not doc_id:
+            continue
+
+        for neighbor_idx in (idx - 1, idx + 1):
+            if neighbor_idx < 0:
+                continue
+            try:
+                result = (
+                    supabase.table("app_document_chunks")
+                    .select("id, document_id, chunk_index, content, page_number, token_count")
+                    .eq("document_id", doc_id)
+                    .eq("chunk_index", neighbor_idx)
+                    .limit(1)
+                    .execute()
+                )
+                if result.data:
+                    neighbor = dict(result.data[0])
+                    if neighbor["id"] in existing_ids:
+                        continue
+                    neighbor["filename"] = chunk.get("filename", "")
+                    # Slightly lower score — marks it as adjacent context, not a primary hit
+                    neighbor["similarity"] = chunk.get("similarity", 0.0) * 0.85
+                    neighbor["is_neighbor"] = True
+                    neighbor_chunks.append(neighbor)
+                    existing_ids.add(neighbor["id"])
+            except Exception as e:
+                logger.warning(
+                    "Nachbar-Chunk-Abruf fehlgeschlagen (doc=%s, idx=%d): %s",
+                    doc_id, neighbor_idx, e,
+                )
+
+    if not neighbor_chunks:
+        return chunks
+
+    combined = chunks + neighbor_chunks
+    return sorted(combined, key=lambda c: (c.get("document_id", ""), c.get("chunk_index", 0)))
+
+
+async def _generate_chunk_context(doc_summary: str, chunk_content: str, model: str) -> str:
+    """Generiert einen 1-Satz-Kontext für einen Chunk via LLM (Phase 4.2).
+
+    Verortet den Chunk im Gesamtdokument, damit das Embedding-Modell auch ohne
+    umgebende Abschnitte den richtigen semantischen Raum findet.
+    """
+    from .llm import call_llm  # lazy import — avoids circular dependency at module load
+
+    prompt = (
+        "Schreibe einen einzigen Satz (max. 30 Wörter), der beschreibt, woher dieser "
+        "Abschnitt stammt und was er im Gesamtkontext des Dokuments darstellt. "
+        "Antworte NUR mit diesem Satz, ohne Einleitung oder Kommentar.\n\n"
+        f"Dokumentzusammenfassung: {doc_summary[:500]}\n\n"
+        f"Abschnitt:\n{chunk_content[:800]}"
+    )
+    try:
+        result = await call_llm([{"role": "user", "content": prompt}], model, temperature=0.1)
+        sentence = result["content"].strip()
+        return f"[Kontext: {sentence}]\n\n" if sentence else ""
+    except Exception as e:
+        logger.warning("Kontextgenerierung für Chunk fehlgeschlagen: %s", e)
+        return ""
+
+
+async def _apply_contextual_retrieval(
+    chunk_pairs: List[Tuple[str, Optional[int]]],
+    document_text: str,
+    model: str,
+) -> List[Tuple[str, Optional[int]]]:
+    """Stellt jedem Chunk einen LLM-generierten Kontext voran (Phase 4.2).
+
+    Alle Chunks eines Dokuments werden parallel verarbeitet, um die Latenz minimal
+    zu halten. Der Kontext wird sowohl dem gespeicherten Chunk-Text als auch dem
+    Embedding vorangestellt (Konsistenz zwischen Retrieval und Anzeige).
+    """
+    import asyncio  # noqa: PLC0415
+
+    clean_text = re.sub(r"<!-- page:\d+ -->\n?", "", document_text).strip()
+    doc_summary = clean_text[:1200]
+
+    async def _enrich(pair: Tuple[str, Optional[int]]) -> Tuple[str, Optional[int]]:
+        text, page = pair
+        prefix = await _generate_chunk_context(doc_summary, text, model)
+        return (prefix + text if prefix else text, page)
+
+    enriched = await asyncio.gather(*[_enrich(p) for p in chunk_pairs])
+    return list(enriched)
+
+
+def extract_section_path(content: str) -> str:
+    """Extrahiert den Abschnitts-Breadcrumb aus dem Anfang eines Chunks.
+
+    Der Chunker fügt Heading-Stacks als erste Zeile ein, z. B.:
+    '## 3. Projektrollen > ### 3.1 Projektleiter'
+    Diese Funktion gibt diesen Pfad zurück, damit er in Quellenangaben
+    und im rag_sources-Array des Frontends angezeigt werden kann.
+    """
+    if not content:
+        return ""
+    first_block = content.split("\n\n", 1)[0].strip()
+    # Breadcrumb beginnt mit '#' oder enthält ' > ' (Trennzeichen im Heading-Stack)
+    if first_block.startswith("#") or (" > " in first_block and "#" in first_block):
+        return first_block
+    return ""
+
+
+def apply_relevance_gate(
+    chunks: List[Dict[str, Any]],
+    threshold: float = RAG_RELEVANCE_GATE,
+) -> List[Dict[str, Any]]:
+    """Verwirft alle Chunks, wenn der beste Ähnlichkeitswert unter der Schwelle liegt.
+
+    Verhindert, dass irrelevanter Dokumentkontext in den Prompt eingeschleust wird,
+    wenn der Nutzer etwas fragt, das nichts mit den hochgeladenen Dokumenten zu tun hat.
+    Gibt eine leere Liste zurück, wenn kein Chunk die Relevanzschranke überschreitet.
+    """
+    if not chunks:
+        return chunks
+    max_sim = max(c.get("similarity", 0.0) for c in chunks)
+    if max_sim < threshold:
+        logger.info(
+            "RAG-Relevanzschranke: bester Treffer %.3f < Schwelle %.3f — %d Chunks verworfen",
+            max_sim, threshold, len(chunks),
+        )
+        return []
+    return chunks
+
+
+def build_rag_context(chunks: List[Dict[str, Any]], max_tokens: int = 6000) -> str:
+    """Formatiert abgerufene Chunks als XML-Dokumentenblock für das LLM.
+
+    Verwendet XML-Tags gemäß Anthropic-Prompting-Best-Practices. Jede Quelle enthält
+    Dateiname, Seitennummer und Abschnittspfad. Das Token-Budget (max_tokens) verhindert,
+    dass RAG-Kontext das Kontextfenster dominiert (Phase 7.1 + 7.2).
+    """
     if not chunks:
         return ""
 
-    parts = ["[Relevant documents for context:]"]
+    doc_parts: List[str] = []
+    token_budget = max_tokens
+    skipped = 0
+
     for i, chunk in enumerate(chunks, 1):
         filename = chunk.get("filename", "unknown")
         similarity = chunk.get("similarity", 0)
         content = chunk.get("content", "")
-        parts.append(f"\n--- Source {i}: {filename} (relevance: {similarity:.0%}) ---\n{content}")
+        page = chunk.get("page_number")
+        section = extract_section_path(content)
 
-    return "\n".join(parts)
+        source_parts = [filename]
+        if page is not None:
+            source_parts.append(f"Seite {page}")
+        if section:
+            source_parts.append(section)
+        source_line = " | ".join(source_parts)
+
+        doc_block = (
+            f'  <document index="{i}">\n'
+            f'    <source>{source_line} (Relevanz: {similarity:.0%})</source>\n'
+            f'    <content>{content}</content>\n'
+            f'  </document>'
+        )
+
+        block_tokens = _tok(doc_block)
+        if block_tokens > token_budget:
+            skipped += 1
+            continue
+
+        doc_parts.append(doc_block)
+        token_budget -= block_tokens
+
+    if not doc_parts:
+        return ""
+
+    if skipped:
+        logger.info(
+            "RAG context: %d chunk(s) ausgelassen (Token-Budget erschöpft, max=%d)",
+            skipped, max_tokens,
+        )
+
+    return "<documents>\n" + "\n".join(doc_parts) + "\n</documents>"
 
 
 def build_image_rag_context(assets: List[Dict[str, Any]]) -> str:

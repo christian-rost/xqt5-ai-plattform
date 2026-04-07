@@ -468,7 +468,9 @@ def _apply_document_access_policy(llm_messages: List[Dict[str, str]]) -> None:
         "DOCUMENT ACCESS POLICY:\n"
         "- You are provided extracted workspace document content in this prompt.\n"
         "- Do NOT claim you cannot access files/documents.\n"
-        "- Base your answer strictly on provided context. If context is insufficient, say what is missing."
+        "- Use the document context ONLY when it is directly relevant to the user's question.\n"
+        "- If the user asks something unrelated to the documents, answer from your own knowledge and do not reference the documents.\n"
+        "- Base your answers on the provided context. If context is insufficient, say what is missing."
     )
     _inject_system_context(llm_messages, policy)
 
@@ -607,13 +609,21 @@ async def send_message(
             rerank_settings=rag_settings,
             document_filters=doc_filters,
         )
+        # Relevanzschranke: Chunks verwerfen, wenn kein Treffer ausreichend ähnlich ist
+        chunks = rag_mod.apply_relevance_gate(chunks)
+        # Phase 5.3 — Nachbar-Chunks für Top-Treffer ergänzen
+        if chunks and rag_settings.get("neighbor_chunks_enabled", True):
+            try:
+                chunks = await rag_mod.enrich_with_neighbors(chunks)
+            except Exception as _ne:
+                logger.warning("Neighbor chunk enrichment failed: %s", _ne)
     except Exception as e:
         logger.warning("RAG vector search failed: %s", e, exc_info=True)
 
     # Step 2: Inject context — always runs regardless of vector search outcome
     try:
         if chunks:
-            rag_context = rag_mod.build_rag_context(chunks)
+            rag_context = rag_mod.build_rag_context(chunks, max_tokens=rag_settings.get("max_context_tokens", 6000))
             rag_sources = [
                 {
                     "filename": c["filename"],
@@ -621,6 +631,7 @@ async def send_message(
                     "excerpt": _make_excerpt(c.get("content", "")),
                     "chunk_index": c.get("chunk_index", 0),
                     "page_number": c.get("page_number"),
+                    "section_path": rag_mod.extract_section_path(c.get("content", "")),
                 }
                 for c in chunks
             ]
@@ -1979,13 +1990,21 @@ async def send_pool_message(
             rerank_settings=rag_settings,
             document_filters=doc_filters,
         )
+        # Relevanzschranke: Chunks verwerfen, wenn kein Treffer ausreichend ähnlich ist
+        chunks = rag_mod.apply_relevance_gate(chunks)
+        # Phase 5.3 — Nachbar-Chunks für Top-Treffer ergänzen
+        if chunks and rag_settings.get("neighbor_chunks_enabled", True):
+            try:
+                chunks = await rag_mod.enrich_with_neighbors(chunks)
+            except Exception as _ne:
+                logger.warning("Neighbor chunk enrichment failed: %s", _ne)
     except Exception as e:
         logger.warning("Pool RAG vector search failed: %s", e, exc_info=True)
 
     # Step 2: Inject context — always runs regardless of vector search outcome
     try:
         if chunks:
-            rag_context = rag_mod.build_rag_context(chunks)
+            rag_context = rag_mod.build_rag_context(chunks, max_tokens=rag_settings.get("max_context_tokens", 6000))
             rag_sources = [
                 {
                     "filename": c["filename"],
@@ -1993,6 +2012,7 @@ async def send_pool_message(
                     "excerpt": _make_excerpt(c.get("content", "")),
                     "chunk_index": c.get("chunk_index", 0),
                     "page_number": c.get("page_number"),
+                    "section_path": rag_mod.extract_section_path(c.get("content", "")),
                 }
                 for c in chunks
             ]

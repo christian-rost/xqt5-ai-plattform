@@ -37,6 +37,10 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 RAG_SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
+# Mindest-Ähnlichkeitswert, ab dem RAG-Kontext in den Prompt eingeschleust wird.
+# Liegt der beste Treffer darunter, werden alle Chunks verworfen und die Frage
+# ohne Dokumentkontext beantwortet. Verhindert irrelevante Kontexteinschleusung.
+RAG_RELEVANCE_GATE = float(os.getenv("RAG_RELEVANCE_GATE", "0.35"))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
 MISTRAL_OCR_STRUCTURED = os.getenv("MISTRAL_OCR_STRUCTURED", "true").lower() in {"1", "true", "yes", "on"}
 MISTRAL_OCR_INCLUDE_IMAGE_BASE64 = os.getenv("MISTRAL_OCR_INCLUDE_IMAGE_BASE64", "true").lower() in {"1", "true", "yes", "on"}

@@ -143,6 +143,10 @@ class UpdateRagSettingsRequest(BaseModel):
     rerank_model: Optional[str] = None
     embedding_provider: Optional[str] = None
     embedding_deployment: Optional[str] = None
+    contextual_retrieval_enabled: Optional[bool] = None
+    contextual_retrieval_model: Optional[str] = None
+    neighbor_chunks_enabled: Optional[bool] = None
+    max_context_tokens: Optional[int] = Field(default=None, ge=1000, le=32000)
 
 
 # Pool models
