@@ -101,11 +101,16 @@ These features exist in `xqt5-ai-plattform-dri` but are absent from the current 
 
 ---
 
+### OTHER IMPORTANT STUFF
+## Add Ticketing System and todos []
+## Harden the System []
+
+
 ## Part 2: RAG Pipeline — Open Items (from RAG-VERBESSERUNGSPLAN.md / RAG-STATUS.md)
 
 These are planned but not yet implemented in either repo.
 
-- another idea: implement "add folder feature" where you press in the folder and upload a complete folder not just single files. this should make it easier to analyse code and get a jist of complex projects
+- [ ] another idea: implement "add folder feature" where you press in the folder and upload a complete folder not just single files. this should make it easier to analyse code and get a jist of complex projects
 
 ### No DB Schema Required
 
