@@ -4,6 +4,8 @@ Erstellt: 2026-03-31 | Quellen: `xqt5-ai-plattform-dri` Code-Diff, `RAG-VERBESSE
 
 Erledigte Punkte werden nach `ERLEDIGT.md` verschoben. Kein Informationsverlust — alle Details bleiben erhalten.
 
+Idee: Dokumenten Caching um neuindexierung zu vermeiden
+
 ---
 
 ## Prioritäten
