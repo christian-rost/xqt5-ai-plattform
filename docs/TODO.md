@@ -1,10 +1,8 @@
 # Feature-Backlog
 
-Erstellt: 2026-03-31 | Quellen: `xqt5-ai-plattform-dri` Code-Diff, `RAG-VERBESSERUNGSPLAN.md`, `RAG-STATUS.md`, `articles/`, `basline-code/rag-vrm/`, `kvml_test/`
+Erstellt: 2026-03-31 | Letzter Recherche-Pass: 2026-04-29 | Quellen: `RAG-VERBESSERUNGSPLAN.md` (vollständig portiert), `articles/`, `basline-code/rag-vrm/`, `ocr-benchmark/` (Parallelprojekt mit Backend-Vergleich), `kvml_test/`
 
-Erledigte Punkte werden nach `ERLEDIGT.md` verschoben. Kein Informationsverlust — alle Details bleiben erhalten.
-
-Idee: Dokumenten Caching um neuindexierung zu vermeiden
+Erledigte Punkte werden nach `IMPLEMENTIERT.md` verschoben. Kein Informationsverlust — alle Details bleiben erhalten.
 
 ---
 
@@ -17,9 +15,51 @@ Idee: Dokumenten Caching um neuindexierung zu vermeiden
 
 ---
 
+## Dedup & Cache-Disziplin (Neu, Recherche-Pass 2026-04-29)
+
+Quelle: `basline-code/rag-vrm/shared/{progress,hashing,config}.py`, `ocr-benchmark/todo.md`, `articles/medium_ocr.txt`. Bündel an Maßnahmen die zusammen die größte Token-/Storage-/Konsistenz-Verbesserung bringen — verzahnt mit „Geplante Re-Embedding-Jobs" (Teil 6.4) und „Semantisches Caching" (Teil 7).
+
+- [ ] 🟠 **Content-Hash-basiertes Skip beim Upload und Re-Embed** (konkrete Umsetzung der ursprünglichen „Dokumenten Caching"-Idee)
+  - Beim Upload: `sha256(file_bytes) -> content_hash` berechnen. Wenn `app_documents`-Zeile mit gleichem `(scope, content_hash)` existiert → bestehende Chunks/Embeddings referenzieren, OCR + Embedding-Pipeline überspringen
+  - Beim nächtlichen Re-Embed (Teil 6.4): Dokumente mit unverändertem Hash überspringen (Cursor-Merkle-Pattern; rag-vrm nutzt mtime — wir nehmen Inhalts-Hash da robuster)
+  - Schema: `ALTER TABLE app_documents ADD COLUMN content_hash varchar(64); CREATE INDEX ON app_documents (content_hash);`
+  - Datei: `documents.py` (Upload-Pfad), `scheduled_jobs.py` (geplant)
+  - **Aufwand:** Klein-Mittel | **Wert:** Hoch — direkte Token-Ersparnis bei jedem Re-Upload
+
+- [ ] 🟠 **Bild-Deduplizierung per Content-Hash** (Logos/Briefköpfe wiederholen sich dutzendfach pro Pool)
+  - SHA256 über die Bild-Bytes; `app_document_assets.content_hash varchar(64)` mit UNIQUE-Constraint pro Scope
+  - Bei Asset-Persistenz: Hash vorhanden → bestehende `asset_id` referenzieren statt neuer Eintrag
+  - Wirkt zusammen mit Phase 3 (Bild-Speicher-Migration auf Supabase Storage) — Storage-Bytes drastisch reduziert
+  - Quelle: `ocr-benchmark/todo.md` als offener Punkt; gleiches Pattern wie Dokument-Hash oben
+  - **Aufwand:** Klein | **Wert:** Hoch — DB- und Storage-Kostenreduktion bei Multi-PDF-Pools
+
+- [ ] 🟠 **VLM-Inferenz-Cache** (Bild-Hash → Beschreibung, derselbe Hash wie oben wiederverwendbar)
+  - Vor jedem VLM-Call: Cache-Lookup auf `content_hash`. Bei Miss: VLM aufrufen, Beschreibung speichern. TTL ∞ (Bild-Hash deterministisch, Modell-ID Teil des Cache-Keys)
+  - Speicher: Redis `{cache_version}:vlm:{model_id}:{image_hash}` ODER Tabelle `app_vision_cache(image_hash, model, description, created_at)`
+  - Identische Logos/Header/Footer in Geschäftsdokumenten werden so genau einmal beschrieben — typisch 5–10× Wiederverwendung pro PDF
+  - Quelle: `articles/medium_ocr.txt` Kostentreiber-Analyse
+  - **Aufwand:** Klein | **Wert:** Hoch — unmittelbare VLM-Token-Ersparnis
+
+- [ ] 🟠 **Cache-Versionierungs-Präfix für Redis** (rag-vrm-Pattern)
+  - Alle Redis-Cache-Keys in xqt5 als `f"{settings.cache_version}:{...}"` präfixen (Env-Var `CACHE_VERSION`, Default `"v1"`)
+  - Bei Algorithmus- oder Embedding-Modell-Wechsel: `CACHE_VERSION` bumpen → alle alten Keys logisch verworfen ohne `FLUSHDB`
+  - Admin-UI-Button „Cache invalidieren" (bumpt Version)
+  - Greift in: BM25-Cache (Teil 4.4), semantisches Caching (Teil 7), VLM-Cache (oben), künftiges Cluster-Lookup-Cache
+  - Quelle: `basline-code/rag-vrm/shared/config.py:60–62`
+  - Datei: `config.py` + jede Stelle mit Redis-Set/Get
+  - **Aufwand:** Klein | **Wert:** Mittel-Hoch — Voraussetzung für sichere Algorithmus-Updates
+
+- [ ] 🟡 **Deterministische `stable_chunk_key` zusätzlich zur UUID** (idempotente Re-Indexierung)
+  - rag-vrm `shared/hashing.py` nutzt deterministische Punkt-IDs. xqt5 `app_document_chunks.id uuid DEFAULT gen_random_uuid()` ist nicht deterministisch — bei Re-Index entstehen neue UUIDs für inhaltlich gleiche Chunks; alte Frontend-Zitate brechen
+  - Lösung: zusätzliche Spalte `stable_chunk_key text` = `sha256(document_id || ':' || chunk_index || ':' || content_hash[:16])` mit UNIQUE-Constraint; Upsert-Pfad nutzt diesen Key
+  - Schema: `ALTER TABLE app_document_chunks ADD COLUMN stable_chunk_key text UNIQUE;`
+  - **Aufwand:** Klein | **Wert:** Mittel — stabile Quellverweise über Re-Index hinweg
+
+---
+
 ## Ausstehende Frontend-Elemente (Backend bereits implementiert)
 
-Die folgenden Backend-Funktionen sind fertig (siehe `ERLEDIGT.md`), die zugehörigen Admin-UI-Steuerelemente fehlen noch:
+Die folgenden Backend-Funktionen sind fertig (siehe `IMPLEMENTIERT.md`), die zugehörigen Admin-UI-Steuerelemente fehlen noch:
 
 - [ ] 🟠 **AdminDashboard.jsx — Toggle: Kontextuelles Retrieval** (Phase 4.2)
   - Toggle für `contextual_retrieval_enabled` + Modell-Auswahl `contextual_retrieval_model`
@@ -87,11 +127,26 @@ Geplant, aber in keinem der beiden Repos implementiert. Basis: `RAG-VERBESSERUNG
 
 ### Großer Refactor / Externe Abhängigkeit
 
-- [ ] 🟡 **Phase 2 — OCR-Abstraktionsschicht** *(bewusst verschoben — OCR-Pipeline in Parallelprojekt)*
-  - `OCRResult`-Dataclass als einheitliches Schema definieren (vollständige Spezifikation in `RAG-VERBESSERUNGSPLAN.md §2.1`)
-  - Bestehende Mistral-Funktionen in `documents.py` als `MistralOCRAdapter` wrappen
-  - Wenn bereit: Docling als primären Extraktionspfad für textbasierte PDFs (>80 Zeichen/Seite Durchschnitt)
+- [ ] 🟠 **Phase 2 — OCR-Abstraktionsschicht** *(geschärft 2026-04-29 mit Benchmark-Evidenz aus `ocr-benchmark/eval/results/summary.md`)*
+  - `OCRResult`-Dataclass als einheitliches Schema definieren — **erweitert gegenüber `RAG-VERBESSERUNGSPLAN.md §2.1`** mit Feldern aus `ocr-benchmark/pipeline/models.py`:
+    - `provenance.bbox: dict | None` und `provenance.section_path: list[str]` (Voraussetzung für „Highlight-in-PDF"-Quellvorschau und `file_assembly`-Endpunkt 4.8)
+    - `chunk_type: Literal["heading", "paragraph", "list", "table", "figure"]`
+    - Pro Figur: `classification` (chart/diagram/logo/photograph/table_image/decorative), `has_embedded_text: bool`, `embedded_text: str | None`, `image_description: str | None` getrennt (zwei VLM-Calls bei `mixed`-Klassifikation), `skipped: bool`, `skip_reason: str | None`
+    - `extraction_method: str` ("mistral" | "docling+nanonets" | "docling-text-only") für spätere Pfad-Auswertung
+    - `has_formulas: bool` (für Phase 5.4)
+  - Bestehende Mistral-Funktionen in `documents.py` als `MistralOCRAdapter` wrappen — bleibt als Cloud-Fallback und für gescannte PDFs
+  - **Primärer Extraktionspfad: `DoclingNanonetsAdapter` (Hybrid-Ansatz)** — Benchmark-Top-Score 99.9% Composite (vs. Mistral 87.6%, Docling-solo schwach bei Figuren)
+    - Docling für Layout/Tabellen/Text, Nanonets-OCR-s pro Figur für Embedded-Text + Description
+    - Schwelle wie ursprünglich: >80 Zeichen/Seite Durchschnitt → Hybrid-Pfad; sonst Mistral
+    - **Voraussetzung:** GPU am Coolify-Host für lokale Nanonets-Inference; Fallback ohne GPU bleibt Mistral
+  - **Konkrete Docling-Konfigurations-Flags** (aus `ocr-benchmark/eval/backends.py:228–240`): `do_table_structure=True`, `generate_picture_images=True`, `include_images=True`, `image_export_mode="embedded"`, `to_formats=["json", "md"]`
   - VLM-Bildinterpretation als `[BILDBESCHREIBUNG]`-Block direkt in Chunk-Text eingebettet
+  - **9-Prompt-Bibliothek aus `ocr-benchmark/pipeline/prompts.py` 1:1 übernehmen** statt neu entwickeln: `TEXT_DOCUMENT`, `MIXED_CONTENT`, `CHART`, `DIAGRAM`, `TABLE_IMAGE`, `LOGO`, `PHOTOGRAPH`, `DECORATIVE`, `GENERAL` + Klassifikator-Prompt (striktes JSON-Format `{"classification": "...", "has_text": ...}`); spart einen kompletten Tuning-Zyklus
+  - **Tesseract als Docling-Fallback bei Seiten mit < 80 Zeichen Text-Output** (pages ohne nativen Text) via `enable_ocr=True, ocr_engine="tesseract_cli"` — kostet null vs. Mistral-Cloud-Roundtrip
+  - **PaddleOCR-VL-1.5 als zusätzlicher Adapter für GPU-lose Hosts** — 84.8% Composite, 3× schneller als Hybrid, gleichauf mit Mistral; Routing via Admin-Setting `ocr_engine: "mistral" | "docling+nanonets" | "paddle"` (pro Pool überschreibbar)
+  - **Tabellen-Roundtrip:** Docling `table.export_to_html()` zusätzlich speichern (neue Spalte `app_document_chunks.table_html text`); LLM kann HTML statt Markdown einbetten für exakte Reproduktion breiter Tabellen
+  - **In Doku verankern:** folgende Modelle haben den Benchmark NICHT bestanden und sollten nicht erneut evaluiert werden: `deepseek-ai/DeepSeek-OCR-2` (61.6% Composite, Suite B 16.7%), `Qwen/Qwen2-VL-2B-Instruct` (41.3%, Suite B 0%), `OpenGVLab/InternVL2-2B` (59.0%), `rednote-hilab/dots.ocr` (59.4%)
+  - **Aufwand:** Mittel-Groß | **Wert:** Sehr hoch (+12 Punkte Composite, +40 Punkte in Suite B „Embedded Text in Figures")
 
 - [ ] 🟡 **Phase 3 — Bild-Speicher-Migration** (Base64 → Supabase Storage)
   - **Hängt ab von:** Phase 2 (OCR-Abstraktion sollte zuerst erfolgen)
@@ -202,6 +257,12 @@ Quellen: `kvml_test/` — die Anforderungen sind direkt als Produktverbesserunge
   - `sharing_scope` hinzufügen: `global` | `group:{group_id}` | `private`
   - UI: Assistenten-Erstellungsformular enthält Scope-Auswahl
   - Datei: `assistants.py`, `AssistantManager.jsx`
+
+- [ ] 🟠 **Default „RAG-Recherche-Assistent"-Template mit Tool-Routing-Tabelle** *(Seed-Daten, kein Code)*
+  - Quelle: `basline-code/rag-vrm/documentation/owui_system_prompt` v3 — kompakte Markdown-Tabelle die jedem Query-Typ ein Erst-Tool zuordnet (Filename → analyze_file, Functionality → search_code, Stack-Trace → resolve_stack_trace, etc.). Pattern schlägt prosa-artige Anweisungen bei kleinen lokalen Modellen
+  - **Wirkt zusammen mit MCP (Teil 3) und Pre-LLM Tool-Routing (Teil 6.1):** liefert Out-of-the-Box-Erfahrung für RAG-Nutzer und entkoppelt Prompt-Engineering von Code
+  - Vorlage in `app_assistants` (oder `app_templates` mit `template_type='system_prompt'`) anlegen; Beispiel-Inhalt aus `owui_system_prompt` v3 als Startpunkt; Admin kann pro Pool aktivieren
+  - **Aufwand:** Trivial (Seed-Migration) | **Wert:** Hoch — sofort starke Default-UX, reduziert Tool-Auswahl-Fehler bei kleineren Modellen
 
 ---
 
@@ -316,6 +377,13 @@ Quellen: `kvml_test/` — die Anforderungen sind direkt als Produktverbesserunge
 - [ ] 🟡 **PII-Bereinigung** (Presidio) — ~5–7 Tage
   - `presidio-analyzer` + `presidio-anonymizer` integrieren
   - PII aus ausgehenden LLM-Prompts bereinigen; Admin-Toggle pro Pool oder global
+
+- [ ] 🟡 **Ollama Modelfile-Builder mit erweitertem `num_ctx`** *(rag-vrm `helpers/ollama_model_builder.py`-Pattern)*
+  - Out-of-the-box laufen Ollama-Modelle mit Default `num_ctx` von 2k–8k — viel zu wenig für RAG mit 6k+ Token-Kontext. Aktuell muss Admin manuell auf dem Host `ollama create` ausführen
+  - Admin-Button „Modell mit erweitertem Kontext anlegen": Backend ruft Ollama-API `POST /api/create` mit Modelfile-Content (`FROM <base>\nPARAMETER num_ctx <N>\nPARAMETER num_predict <M>`); neues Modell erscheint automatisch in Provider-Modell-Liste
+  - Bei der Auswahl eines Ollama-Modells: VRAM-Sizing-Hinweis aus `model_info.size` anzeigen + Warnung wenn `chat_model + embedding_model` einen konfigurierbaren VRAM-Headroom überschreitet (rag-vrm `documentation/install_new_models.md` warnt explizit „account for the embedding model aswell")
+  - Datei: `providers.py` (neuer `OllamaModelBuilder`-Service) + `AdminDashboard.jsx`-Sektion
+  - **Aufwand:** Klein-Mittel | **Wert:** Mittel für Self-Hosted-Kunden
 
 - [ ] 🟡 **Konfigurierbare Daten-Routing-Regeln** (Datentyp → Modell, BYOM / On-Prem-Routing)
   - Admin kann Regeln definieren: z.B. "wenn Dokumenttyp = Vertrag → nur lokale/On-Prem-Modelle erlauben"
@@ -446,6 +514,14 @@ rrf_score = vector_w/(k+rank_v) + bm25_w/(k+rank_b) + payload_w/(k+rank_p)
   - **Erfordert:** neue Spalten `document_type varchar`, `keywords text[]` in `app_document_chunks` (oder `app_documents` joined)
   - **Hinweis:** Dies ist die dokumentenangepasste Version von baselines `_payload_search()`
 
+- [ ] 🟡 **Metadaten als Pre-Filter VOR Vektor-Suche** *(zweites, sequenzielles Muster ergänzend zum RRF-Signal oben)*
+  - Quelle: `articles/medium_rag.txt` Lösung 4. Zwei verschiedene Modi:
+    - *Parallel (oben, RRF):* drei Listen, RRF-Fusion am Ende — Recall-orientiert
+    - *Sequenziell (dieser Punkt):* erst harte Metadata-Bedingung (Datum-Range, doc_type, author), dann Suche im Rest — Latenz-orientiert, schneidet 80% des Korpus weg
+  - **Wichtig:** `parse_document_filters()` in `rag.py:393` extrahiert bereits Filter-Hints aus Queries — wird aktuell nur für `fetch_filtered_document_ids` (Pre-Selection) genutzt. Diese sollten konsequent als WHERE-Clause direkt in `match_document_chunks` durchgereicht werden, nicht nur als Pre-Selection
+  - Wenn Anfrage explizite Filter ergibt (Date-Range, Dokumenttyp aus Intent-Detection), als WHERE-Clause durchreichen → BM25/Vektor-Suche läuft auf 20% des Korpus, viel schneller und genauer
+  - **Aufwand:** Klein (RPC-Update) | **Wert:** Hoch für Anfragen mit expliziten Datums-/Typ-Hinweisen
+
 ---
 
 ### 4.3 Custom Reranking mit expliziten Boost-Signalen
@@ -471,6 +547,7 @@ rrf_score = vector_w/(k+rank_v) + bm25_w/(k+rank_b) + payload_w/(k+rank_p)
   - Datei: neue `_rerank_chunks(chunks, query, intent)`-Funktion in `rag.py`
   - **Hinweis:** Das aktuelle Latest hat bereits optionales Cohere Cross-Encoder Reranking (`_apply_optional_rerank()`). Dieser lokale Reranker ist ein Zero-Latenz-Zero-Cost-Komplement — kein API-Key erforderlich, läuft in-process. Beide können koexistieren: lokaler Reranker zuerst, dann optionaler Cohere-Durchlauf auf den Top-N.
   - **Außerdem:** Recency- und Authority-Boost-Signale (Teil 5.7) sollten als zusätzliche Cases in diesem Reranker implementiert werden — nicht separat.
+  - **Boost-Werte aus `app_settings` lesen — nicht hartcodieren** (rag-vrm `.env.prod`-Pattern). Setting-Schlüssel: `boost_section_heading`, `boost_doc_type`, `boost_date_in_range`, `boost_payload_match`, `boost_term_freq_max`, `boost_short_chunk_penalty`, `boost_filename_match`, `boost_recency`, `boost_authoritative`. Vorteil: A/B-Vergleich von Rankings ohne Deploy; Pro-Pool oder Pro-Mandant unterschiedliche Werte möglich (BYOM-Szenario aus Teil 3). Admin-UI-Sektion „Reranker-Tuning".
 
 ---
 
@@ -586,6 +663,41 @@ rrf_score = vector_w/(k+rank_v) + bm25_w/(k+rank_b) + payload_w/(k+rank_p)
 
 ---
 
+### 4.8 Code-Tools & Datei-Rekonstruktion (Baseline `agentic_rag/tools/`)
+
+**Quelle:** `basline-code/rag-vrm/agentic_rag/tools/handlers/` und `tools/core/file_assembly.py`
+
+Baseline exponiert spezialisierte Code-Retrieval-Endpunkte (`find_usages`, `get_inheritance_tree`, `trace_call_flow`, `grep_code`, `resolve_stack_trace`, `analyze_file`, `git_history`, `search_code`) als MCP-Tools. xqt5 plant durch Teil 4.6/4.7 die nötigen Daten (`symbols[]`, `start_line`/`end_line`, `content_type`) — diese Endpunkte hebeln sie als agentische Werkzeuge.
+
+- [ ] 🟡 **Code-aware MCP-Tools** — agentische Retrieval-Endpunkte über `app_document_chunks`:
+  - `find_usages(symbol)` — alle Chunks mit Symbol in `symbols[]`
+  - `get_definition(symbol)` — Chunk mit Symbol in `chunk_type=function|class`
+  - `grep_code(pattern, file_pattern)` — Regex-Suche über `content` (PostgreSQL `~`)
+  - `resolve_stack_trace(trace)` — Frame für Frame zu Datei:Zeile auflösen
+  - Hängt ab von: Teil 4.6 (`symbols[]`, `start_line`/`end_line`) und Teil 3 MCP-Server
+  - Datei: neue `backend/app/code_tools.py` + MCP-Tool-Definitionen
+  - **Mehrwert:** wandelt RAG-Daten in agentische Werkzeuge — Modell kann gezielt Code-Strukturen abfragen statt nur semantische Suche
+
+- [ ] 🟡 **`file_assembly` — Chunk-Rekonstruktions-Endpunkt** — `GET /api/documents/{id}/reconstruct?start_line=42&end_line=67`
+  - Aus den Chunks eines Dokuments einen geordneten, deduplizierten Slice zusammensetzen (Baseline: `tools/core/file_assembly.py`)
+  - Verwendung: Inline-Quellvorschau im Frontend, "Jump-to-Source"-Link aus Zitierung, präzise Kontext-Vergrößerung in Antworten
+  - Hängt ab von: Teil 4.6 (`start_line`/`end_line` pro Chunk)
+  - Datei: neuer Endpunkt in `documents.py` + Vorschau-Integration in `SourceDisplay.jsx`
+
+- [ ] 🟡 **Automatischer `grep_code`-Fallback bei leerem Retrieval** *(rag-vrm `FALLBACK_TO_GREP=1`-Pattern)*
+  - Quelle: `basline-code/rag-vrm/documentation/info_other_rags` argumentiert „grep works ~99% of the time when used well". xqt5 4.8 plant `grep_code` als MCP-Tool, aber NUR für Code-Dokumente und über Chunks
+  - Der **automatische Fallback-Pfad** für *alle* Dokumente fehlt: Wenn `apply_relevance_gate()` (bereits in IMPLEMENTIERT) alle Chunks verwirft → PostgreSQL `~`/`ILIKE` über `app_document_chunks.content` mit den 2–3 Hauptbegriffen aus der Anfrage. Liefert mindestens *etwas* statt „kein Treffer"
+  - Konfiguration: `RAG_FALLBACK_TO_KEYWORD_SEARCH: bool` in `app_settings`
+  - Datei: `rag.py` (`build_rag_context` Fallback-Zweig)
+  - **Aufwand:** Mittel | **Wert:** Mittel-Hoch — verhindert „leere"-RAG-Antworten
+
+- [ ] 🟢 **Pre-Ingestion-Filetype-Analyzer** — Vor-Index-Endpunkt der hochgeladene Dateien (oder Repos) scannt und Verteilung erkannter `content_type` + gewählter Chunking-Strategie meldet, bevor verarbeitet wird
+  - Ermöglicht Admin-Bestätigung vor langen Verarbeitungsläufen großer Sammlungen
+  - Dünner Wrapper um `detect_content_type()` aus Teil 4.6
+  - Datei: neuer Endpunkt in `documents.py`, Vorschau-Anzeige in `FileUpload.jsx`
+
+---
+
 ## Teil 5: RAG-Verbesserungen — Artikel-Best-Practices
 
 Folgende Punkte kommen direkt aus den Artikeln in `/articles/` und sind noch nicht im bestehenden Plan oder Code abgedeckt.
@@ -612,8 +724,16 @@ Folgende Punkte kommen direkt aus den Artikeln in `/articles/` und sind noch nic
   - `HierarchicalChunker` aus `docling_core.transforms.chunker` respektiert H1/H2/H3-Grenzen, Absatzumbrüche und Listenstrukturen nativ
   - Jeder Chunk trägt Docling-Provenienz: Seitenzahl, Überschriftspfad, Bounding Box
   - Wenn es den Custom-Chunker ersetzt: bessere Überschriften-Metadaten, Provenienz-basierte Seitenzahlen (kein `<!-- page:N -->`-Parsing nötig), Formel-/Tabellen-Bewusstsein eingebaut
-  - Abwägung: verliert deutsche Satz-Grenz-Logik und Custom-Tabellen-Fortsetzungs-Header-Logik aus Phase 5.1 (dri)
+  - Abwägung: verliert deutsche Satz-Grenz-Logik und Custom-Tabellen-Fortsetzungs-Header-Logik aus Phase 5.1
   - **Empfehlung:** HierarchicalChunker als Basis verwenden; Ausgabe nachverarbeiten um hinzuzufügen: Tabellen-Fortsetzungs-Headers (5.1), Kontextuelles-Retrieval-Prefix (4.2) und Breadcrumb-Injektion
+
+- [ ] 🟠 **Bounding-Box pro Chunk speichern** *(kommt fast frei mit Docling)*
+  - Docling-Provenance enthält **Seitenzahl + Heading-Pfad + Bounding-Box** pro Element. xqt5 speichert aktuell nur `page_number` und `section_path` — die Bounding-Box ist neu
+  - Schema: `ALTER TABLE app_document_chunks ADD COLUMN bbox jsonb;` (`{x0, y0, x1, y1, page}`)
+  - **Frontend-Hebel:** „Highlight-in-PDF"-Quellvorschau möglich, die das exakte Snippet im Original-PDF visuell hervorhebt — derzeit unmöglich. Wichtiges Vertrauenssignal für Enterprise-Akzeptanz
+  - Ergänzt das geplante `file_assembly`-Endpunkt (Teil 4.8) und Inline-Zitierungen (Teil 2)
+  - Quelle: `articles/medium_ocr.txt`, bestätigt durch `ocr-benchmark/pipeline/models.py:provenance.bbox`
+  - **Aufwand:** Klein (kommt frei mit Docling) | **Wert:** Hoch für UX
 
 ---
 
@@ -635,8 +755,17 @@ Folgende Punkte kommen direkt aus den Artikeln in `/articles/` und sind noch nic
 
 - [ ] 🟡 **Vision-Inferenz für Low-Value-Bilder überspringen**
   - Vor VLM-Sendung schnelle Größen-/Seitenverhältnis-Heuristik ausführen: Bilder < 50×50px oder mit Seitenverhältnis typisch für Logos (sehr breit und kurz oder kleine Quadrate) können übersprungen werden
+  - **Konkrete Größen-Schwelle aus `ocr-benchmark/pipeline/image_handler.py`:** Default `vision_skip_below_kb: float = 15.0` als Admin-Setting; Bilder unter 15 KB überspringen
   - Alternativ: erster VLM-Call klassifiziert als "Logo/Dekorativ" → aufwändigen Interpretations-Call überspringen
   - Spart Kosten und vermeidet Verschmutzung von Chunks mit Logo-Beschreibungen
+  - Verzahnt mit VLM-Cache (siehe „Dedup & Cache-Disziplin"-Sektion oben) und Bild-Hash-Dedup
+
+- [ ] 🟡 **Zwei separate VLM-Calls pro Figur — Text-Extraktion getrennt von Beschreibung**
+  - Quelle: `ocr-benchmark/pipeline/prompts.py` strikte Trennung `FIGURE_TEXT_PROMPT` (Suite B, „Extract ALL readable text … verbatim") und `FIGURE_DESCRIBE_PROMPT` (Suite C, „describe each visual element"); beide Modi haben unterschiedliche Anforderungen, ein einziger Prompt verwässert beide
+  - Bei Klassifikation `text_document` / `mixed` / `table_image` → nur Text-Extract (1 Call)
+  - Bei `chart` / `diagram` / `logo` / `photograph` → Description (1 Call). Bei `mixed` zusätzlich Text-Extract (2 Calls)
+  - Folge fürs `OCRResult`-Schema: `embedded_text` und `image_description` als zwei separate Felder (siehe Phase 2 oben)
+  - **Aufwand:** Klein | **Wert:** Hoch — hebt Mistral-Suite-B-Score laut Benchmark von 60% auf erwartet >90% (Nanonets liefert 100%)
 
 - [ ] 🟡 **Mehrseitige Figur-Interpretationen zusammenführen**
   - Wenn Docling erkennt dass eine Figur oder Tabelle sich über Seitengrenzen erstreckt (gleiche `figure_id` oder passende Beschriftung), Interpretationen vor Chunk-Embedding zu einem kohärenten Block zusammenführen
@@ -690,6 +819,25 @@ Folgende Punkte kommen direkt aus den Artikeln in `/articles/` und sind noch nic
   - **Vorteil:** Retrieval eines isolierten Chunks hat immer richtungsbezogenen Kontext, auch ohne Nachbar-Anreicherung
   - Ergänzt Phase 5.3 (Nachbar-Anreicherung) statt sie zu ersetzen
 
+- [ ] 🟡 **Thematische Cross-Chunk-Beziehungs-Links (`related_chunk_ids[]`)** *(thematisch statt sequenziell)*
+  - Quelle: `articles/medium_rag.txt`. Aktuell hat xqt5 nur `chunk_index ± 1`-Nachbarn (Phase 5.3) — sequenziell, nicht thematisch
+  - Bei Indexierung pro Chunk Top-3 ähnlichste Chunks im *gleichen Dokument* via Kosinus berechnen (kostet nur Embeddings die schon vorhanden sind), als `related_chunk_ids uuid[]` speichern
+  - Bei Retrieval optional 1–2 Top-Related-Chunks pro Top-Treffer mitziehen (analog `enrich_with_neighbors()` in `rag.py:1125`, aber thematisch)
+  - Schema: `ALTER TABLE app_document_chunks ADD COLUMN related_chunk_ids uuid[] DEFAULT '{}';`
+  - **Aufwand:** Klein-Mittel | **Wert:** Mittel — fängt Querbezüge in langen Dokumenten ab, die `chunk_index ± 1` verfehlt
+
+---
+
+### 5.6.1 Multi-Modal Retrieval als drittes paralleles Signal
+
+**Quelle:** `articles/chatgpt_ocr_pipeline_recommendations.txt` Schritt 8
+
+- [ ] 🟡 **Image-Retrieval immer parallel zu Text/Tabellen-Retrieval ausführen** (Multi-Modal RRF)
+  - Aktuell: `search_similar_assets()` in `rag.py:1032` existiert, wird aber nur bedingt eingehängt (`should_use_image_retrieval` Gate in `rag.py:564`)
+  - Multi-Modal-Retrieval als drittes RRF-Signal für Asset-Treffer (komplementär oder kombiniert mit „Payload-Suche als drittes RRF-Signal" Teil 4.2 — beide nutzen denselben RRF-Slot je nach Anfrage-Intent)
+  - Setting: `image_retrieval_strategy: "never" | "on_demand" | "always"` in `app_settings`
+  - **Aufwand:** Klein-Mittel | **Wert:** Mittel für bilderlastige Dokumente
+
 ---
 
 ### 5.7 Aktualitäts- und Autoritäts-Scoring-Signale
@@ -706,6 +854,13 @@ Folgende Punkte kommen direkt aus den Artikeln in `/articles/` und sind noch nic
   - Neue Spalte: `app_documents.is_authoritative bool DEFAULT false`
   - +0.15 Boost im Reranker für autoritative Dokumente anwenden
   - Admin-/Pool-Owner-UI: Checkbox beim Dokument-Upload oder in Dokumentenliste
+
+- [ ] 🟡 **Datengetriebene Chunk-Confidence aus Near-Duplicate-Detection** *(komplementär zu `is_authoritative` oben)*
+  - GraphRAG-Idee aus `articles/medium_rag.txt` Lösung 5: Wenn dieselbe Aussage (sehr ähnlicher Text-Hash, near-duplicate) in mehreren Dokumenten auftaucht, gewinnt sie an Vertrauen — datengetrieben statt manuell vergeben
+  - Schema: `app_document_chunks.confidence_score float DEFAULT 0.5`
+  - Beim Indexieren MinHash/LSH-Detect für near-duplicates über alle Chunks im Pool (`datasketch`-Lib); bestätigte Chunks bekommen Boost
+  - Im Reranker (4.3): zusätzliches Boost-Signal `+0.05 * (confidence_score - 0.5)` einbauen
+  - Verschieden vom `is_authoritative`-Flag (manuell, oben) — Confidence ist datengetrieben/automatisch; beide Signale koexistieren
 
 ---
 
@@ -726,6 +881,19 @@ Folgende Punkte kommen direkt aus den Artikeln in `/articles/` und sind noch nic
   - `max_similarity`, `chunk_count_returned`, `gate_passed` (bool) für jeden RAG-Call zu `app_audit_log` loggen
   - Admin-Chart: durchschnittliche Ähnlichkeitswerte über Zeit, Gate-Ablehnungsrate, Top-Anfragen mit niedriger Ähnlichkeit
   - Hilft `RAG_RELEVANCE_GATE`-Schwellenwert ohne Raten zu tunen
+
+- [ ] 🟠 **OCR-Regressionstest-Harness aus `ocr-benchmark/scorers.py`** *(direkt portierbar — pure Python + rapidfuzz)*
+  - **Motivation:** Mistral-OCR hat sich laut `ocr-benchmark/CLAUDE.md` nachweislich von `mistral-ocr-2505` auf `mistral-ocr-2512` verschlechtert. Ohne Harness merkt es niemand
+  - Verzeichnis `backend/tests/ocr_regression/` mit Benchmark-PDFs und Ground-Truth-JSONs anlegen (Vorlage: `ocr-benchmark/eval/ground_truth.json`)
+  - **Vier-Suite-Score** (`scorers.py` direkt importierbar):
+    - Suite A (Text, Gewicht 2.0, Schwelle 95)
+    - Suite B (Embedded Text in Figures, 2.0, 85)
+    - Suite C (Figure Description Keyword Groups, 1.0, 80)
+    - Suite D (Tables, 1.5, 90)
+  - Ausführbar als pytest-Marker `@pytest.mark.ocr_regression` — läuft nur on-demand (kostet Tokens)
+  - **CI-Variante:** Stub-OCR-Adapter mit aufgezeichneten Responses aus `eval/results/<model>/raw_data.json` (das `--rerender`-Pattern) — Tests laufen offline
+  - Optional: Multi-Run-Konsistenzmessung wie `scorers.py:compute_run_stats()` — Alarm wenn `std > 0.05` (entdeckt nicht-deterministische Cloud-Endpoints)
+  - **Aufwand:** Mittel (1–2 Tage) | **Wert:** Sehr hoch — verhindert stille Regression bei Provider-Versionswechseln
 
 ---
 
@@ -767,6 +935,33 @@ Quellen: Web-Recherche zu RAG Best Practices 2025/2026, Open WebUI Feature-Set, 
   - Klassifikator: bestehende `detect_query_intent()` um Komplexitätswert erweitern; oder dediziertes kleines Modell verwenden
   - Reduziert unnötigen Retrieval-Overhead und Latenz für einfache Anfragen
   - Datei: `rag.py` → `detect_query_intent()`-Erweiterung, `main.py` → Routing-Logik
+
+- [ ] 🟠 **Hierarchisches Domain-Routing (4-Level: Domain → Kategorie → Doc → Chunk)** *(Antwort auf „Stanford Semantic Collapse" ab ~10k Dokumenten)*
+  - Quelle: `articles/medium_rag.txt`. xqt5 hat aktuell flache Vektorsuche pro Pool. Ab größeren Pools (Tausende von Dokumenten) fällt Genauigkeit drastisch — quantifizierter Effekt: 10× Latenz, 2× Genauigkeitsverlust ab 10k Docs ohne Hierarchie
+  - **Schema:** Neue Spalten in `app_documents`: `domain varchar` (z.B. „HR", „Finanzen", „Recht", „Technik"), `category varchar` (z.B. innerhalb HR: „Verträge", „Richtlinien", „Onboarding"). Werte LLM-klassifiziert beim Upload (parallel zu `summary` in `_summarize_document()`)
+  - Erweiterung von `detect_query_intent()` in `rag.py:554` um `detect_query_domain(query) -> Optional[str]` (Few-Shot Klassifikator gegen die in `app_settings` registrierten Domains)
+  - `match_document_chunks` RPC um `filter_domain` und `filter_category` erweitern (Pre-Filter VOR Vektor-Distanz). Massive Suchraum-Reduktion
+  - Admin-UI: editierbare Domain-Taxonomie pro Pool; Nutzer kann manuell Domain überschreiben
+  - Verzahnung mit Phase 4.1: deren `doc_type` ist eng verwandt mit „category" — diese Idee ist die zwei-stufige Variante (Domain als oberer Layer)
+  - **Aufwand:** Mittel-Groß | **Wert:** Sehr hoch bei Pool-Größen >1k Dokumente
+
+- [ ] 🟠 **Semantic Clustering als Two-Stage Retrieval (HDBSCAN)** *(unsupervised Alternative/Ergänzung zu Domain-Routing oben)*
+  - Quelle: `articles/medium_rag.txt` Lösung 2. Beispiel: 50k Dokumente → 127 Cluster (∅ 89 Docs/Cluster) → erst Top-3-Cluster matchen, dann darin tief suchen. 99.2% Suchraum-Reduktion, 8× Latenz-Verbesserung gemessen
+  - **Vorteil gegenüber Domain-Routing oben:** unsupervised, keine manuelle Taxonomie nötig — auto-organisiert
+  - **Schema:**
+    - Neue Tabelle `app_document_clusters(id, pool_id, label_keywords text[], summary text, centroid vector(1536), member_count int)`
+    - Spalte `app_documents.cluster_id uuid` (nullable, FK)
+  - **Job:** APScheduler-Aufgabe (passt zu „Geplante Re-Embedding-Jobs" Teil 6.4): Wenn Pool >500 Dokumente → HDBSCAN auf Dokument-Embeddings (Mittelwert der Chunk-Embeddings oder neues `summary_embedding` aus Phase 6.1) → Cluster-Zuordnung schreiben → für jeden Cluster einen Cluster-Summary via LLM generieren
+  - **Bei Query:** erst Vektor-Vergleich gegen `app_document_clusters.centroid` (n=127 statt n=50.000), Top-3-Cluster auswählen, dann `match_document_chunks` mit `filter_cluster_id IN (...)`
+  - Libs: `hdbscan` (BSD-Lizenz), `umap-learn` für Dimension-Reduktion vor Clustering
+  - **Aufwand:** Mittel | **Wert:** Sehr hoch bei großen Pools
+
+- [ ] 🟠 **Pre-LLM Tool-Routing — schneller Klassifikator vor teurem Hauptmodell-Call**
+  - Quelle: `basline-code/rag-vrm/agentic_rag/todo` (OpenWebUI-Pipelines-Pattern). Komplementär zu „Adaptives RAG-Routing" oben — nicht „RAG ja/nein" sondern „welches Werkzeug" (Web-Suche / RAG / Code-Tool / nur Modell-Wissen)
+  - Wertvoll vor allem für lokale Ollama-Modelle, die natives Tool-Calling schlecht beherrschen
+  - Neue Funktion `_route_to_tool(query, available_tools) -> Optional[ToolCall]` in `llm.py`: ruft kleines Schnell-Modell (z.B. `llama3.2:3b` oder Haiku) mit Routing-Tabelle als Prompt auf; bei Tool-Treffer Tool ausführen + Ergebnis als Kontext einfügen, dann Hauptmodell
+  - Datei: neuer `tool_router.py`, `llm.py`-Erweiterung
+  - **Aufwand:** Mittel-Hoch | **Wert:** Mittel — entkoppelt Tool-Auswahl von Modell-Fähigkeiten
 
 - [ ] 🟡 **GraphRAG — Entity-Graph neben Vektorsuche**
   - Bei Dokument-Upload: Entity-Tripel (Person, Org, Konzept, Datum, Betrag + Beziehung) via LLM extrahieren
@@ -848,6 +1043,13 @@ Quellen: Web-Recherche zu RAG Best Practices 2025/2026, Open WebUI Feature-Set, 
   - Ermöglicht A/B-Testing zwischen Prompt-Versionen (x% des Traffics zu Version B routen)
   - Datei: neues `prompts.py`-Modul, Admin-UI-Tab
 
+- [ ] 🟡 **RAG-Statistik-Tab im Admin-Dashboard** *(rag-vrm `manage_collections.py`-Pattern)*
+  - Aktuell: keine Datendichte-Statistik pro Pool — wie viele Dokumente, Chunks, Embedding-Tokens, durchschnittliche Doc-Größe, letztes Indexierungsdatum?
+  - Neuer Admin-Tab „RAG-Statistik" mit Tabelle `pool_id | doc_count | chunk_count | total_tokens | last_indexed | size_mb` + Pie-Chart Content-Type-Verteilung (sobald Teil 4.6 implementiert)
+  - Endpoint: `GET /api/admin/rag/stats`
+  - Datei: `admin.py` neue Endpoint, `AdminDashboard.jsx` neuer Tab
+  - **Aufwand:** Mittel | **Wert:** Mittel — ohne Statistik kein Tuning-Feedback
+
 - [ ] 🟡 **Kosten-Observability-Dashboard**
   - `token_tracking.py` verfolgt Nutzung bereits — richtig surfacen:
   - Admin-Charts: Ausgaben pro Nutzer, pro Modell, pro Tag/Woche/Monat
@@ -872,9 +1074,45 @@ Quellen: Web-Recherche zu RAG Best Practices 2025/2026, Open WebUI Feature-Set, 
   - Wird von Kubernetes Readiness Probes verwendet um Traffic zurückzuhalten bis App vollständig initialisiert
   - Datei: `main.py` (zwei separate Endpunkte)
 
+- [ ] 🟠 **Geplante Re-Embedding-Jobs** — nächtlicher Diff + wöchentlicher Voll-Rebuild
+  - **Nächtlich:** Dokumente mit geändertem `content_hash` erkennen (siehe „Dedup & Cache-Disziplin"-Sektion oben), nur diese neu chunken + embedden
+  - **Wöchentlich:** Voll-Rebuild über alle Dokumente — deckt Embedding-Modell-Drift, Contextual-Retrieval-Backfill und Algorithmus-Änderungen ab
+  - **Konflikt-Schutz via PostgreSQL Advisory-Lock:** Bei Job-Start `pg_try_advisory_lock(hashtext('rag_reindex'))`; falls schon gehalten → Job überspringen + Log. Verhindert dass nächtliche und manuell ausgelöste Jobs gleichzeitig laufen und identische Dokumente doppelt embedden (Race Condition + Token-Kosten). Coolify-kompatibel — kein Filesystem-Lock nötig
+  - **Post-Run-Integritätsprüfung:** nach Job `SELECT COUNT(*) FROM app_document_chunks WHERE document_id = ?` für jedes verarbeitete Doc; bei 0 Chunks Audit-Log + UI-Warnung. Verhindert „stillen Datenverlust" wenn Indexer mitten im Lauf abstürzt (rag-vrm `scripts/reindex.sh:117–122`-Pattern)
+  - **Randomized Delay (`random.randint(0, 300)` Sekunden) bei Job-Start** — verteilt Last bei Multi-Tenant, vermeidet Thundering-Herd
+  - Logging in `app_audit_logs`
+  - **Mehrwert:** Status-Doc warnt bereits "vorhandene Dokumente brauchen Re-Chunking" für Contextual-Retrieval — derzeit kein Automatismus, manuelle Auslösung nötig
+  - Quelle: `basline-code/rag-vrm/documentation/automatic_index_update.md` + `scripts/reindex.sh`
+  - Datei: neues Modul `backend/app/scheduled_jobs.py` (APScheduler) oder systemd-Timer in Coolify
+
+- [ ] 🟢 **Inkrementelles Git/GitLab-Repo-Reindexing** — Repo per URL anbinden, Commit-Hash speichern, beim Reindex nur geänderte Dateien neu verarbeiten
+  - Erweitert "Ordner-Upload" (Teil 1) zu kontinuierlichem Sync für Code-Projekte und Doku-Repos
+  - Implementierung: `git clone`/`git pull`; Diff gegen `last_indexed_commit`; nur veränderte Pfade reindexen, gelöschte Pfade aus `app_documents` entfernen
+  - Quelle: `basline-code/rag-vrm/documentation/gitlab_pull_reindexing.txt`
+  - Schema: neue Tabelle `app_repo_sources(id, url, branch, last_indexed_commit, owner_user_id, pool_id)`
+  - Datei: Erweiterung `documents.py`, neuer Tab in `AdminDashboard.jsx` oder pro Pool
+
+- [ ] 🟢 **CLI für Collection-Management** — Admin-Skript um RAG-Collections (z.B. pro Pool / Mandant) zu erstellen, listen, löschen, swappen
+  - Nur relevant wenn Multi-Collection-Isolation implementiert wird (separater Vektor-Index pro Pool statt geteilte `app_document_chunks`)
+  - Quelle: `basline-code/rag-vrm/agentic_rag/manage_collections.py`
+  - Datei: neues Skript `backend/manage_collections.py`
+
 ---
 
 ## Teil 7: Plattformqualität
+
+- [ ] 🟠 **Service-Readiness-Schleife beim Start** *(rag-vrm `indexer/main.py:17–43`-Pattern)*
+  - Beim FastAPI-Startup (lifespan/`@app.on_event("startup")`) Supabase + Embedding-Provider mit Retry-Loop pingen (`max_retries=30, delay=2`); bei Fehlschlag Service mit klarer Fehlermeldung verweigern statt 500-Spirale auf jede Anfrage
+  - Vermeidet Crashes wenn Backend hochfährt bevor DB/Embedding-Provider verfügbar sind (Coolify-Cold-Start-Szenario)
+  - Datei: `main.py` Lifespan-Handler
+  - **Aufwand:** Klein | **Wert:** Mittel — robusterer Coolify-Restart-Flow
+
+- [ ] 🟡 **Dev/Prod-Datentrennung formalisieren** *(rag-vrm `.env.dev`/`.env.prod`-Pattern)*
+  - Aktuell: ein einziger `.env`. Lokale Entwicklung und Coolify-Prod treffen denselben Supabase wenn nicht manuell getrennt — Risiko für versehentliche Daten-Überschreibung
+  - `ENV_NAME` env-var (`dev` | `staging` | `prod`); Tabellenname-Präfix oder Schema-Separation; Redis-Prefix (kombiniert mit Cache-Versionierung); Logs/Audit kennzeichnen Environment
+  - Fail-fast wenn `ENV_NAME=prod` und `SUPABASE_URL` localhost matcht
+  - Datei: `config.py`, neue Validation in Lifespan
+  - **Aufwand:** Mittel | **Wert:** Mittel — verhindert Dev→Prod-Datenkollisionen
 
 - [ ] 🟡 **Streaming-Fehler-Recovery** — Partial Content + Fehler-Marker wenn SSE-Stream mitten in Antwort abbricht
 - [ ] 🟡 **Request-Deduplizierung** — Idempotency-Key bei `POST /chat` um Doppel-Submissions zu verhindern
@@ -902,46 +1140,59 @@ Quellen: Web-Recherche zu RAG Best Practices 2025/2026, Open WebUI Feature-Set, 
 5. MCP-Support (4–5 Tage)
 6. Audit-Log + Token-Budgets + Web-Suche (parallel wo möglich)
 
+**Post-Tender: Quick Wins (klein, hoher Hebel)**
+7. Content-Hash-basiertes Skip beim Upload („Dedup & Cache-Disziplin")
+8. Bild-Hash-Dedup + VLM-Inferenz-Cache (Voraussetzung: Phase 3 nicht zwingend)
+9. Cache-Versionierungs-Präfix für Redis (Voraussetzung für sichere Cache-Updates)
+10. Reranker-Boost-Werte aus `app_settings` lesen (in Teil 4.3 verankert)
+
 **Post-Tender: RAG-Qualität (reiner Code, kein Schema)**
-7. Phase 6.2 — Query Expansion
-8. Gewichtetes RRF (Teil 4.1)
-9. Vorheriger/nächster Chunk-Kontext bei Indexierungszeit (Teil 5.6)
-10. Dynamischer Vision-Prompt pro Bildtyp (Teil 5.3)
+11. Phase 6.2 — Query Expansion
+12. Gewichtetes RRF (Teil 4.1)
+13. Vorheriger/nächster Chunk-Kontext bei Indexierungszeit (Teil 5.6)
+14. Dynamischer Vision-Prompt pro Bildtyp (Teil 5.3) + Zwei-Call-Trennung
+15. Metadaten-Pre-Filter VOR Vektor-Suche (Teil 4.2 sequenzielle Variante)
+16. Geplante Re-Embedding-Jobs mit Advisory-Lock + Integritätsprüfung (Teil 6.4)
+17. Service-Readiness-Schleife beim Start (Teil 7)
 
 **Post-Tender: RAG-Qualität (kleine Schema-Migrationen)**
-11. Phase 4.1 — Metadaten-Extraktion (language, doc_type, page_count)
-12. Content-Type-Erkennung + `content_type`-Spalte (Teil 4.6) — kleine Migration, entsperrt alles darunter
-13. Typspezifischer Chunking-Dispatch für Code/Config/Markdown (Teil 4.6) — nur Code, kein weiteres Schema
-14. Code-Symbol-Extraktion pro Chunk + `symbols[]`-Spalte + `start_line`/`end_line` (Teil 4.6) — hängt ab von 12
-15. Pro-Chunk-Keyword-Extraktion + GIN-Index für Prose (Teil 4.5) — parallel zu 14
-16. Payload-Suche als drittes RRF-Signal (Teil 4.2 — hängt ab von 14 + 15)
-17. Lokaler Reranker mit Boost-Signalen (Teil 4.3)
-18. Code-Symbol-Payload-Suche + Dateiname-Boost im Reranker (Teil 4.7 — hängt ab von 14 + 17)
-19. Aktualitäts- + Autoritäts-Scoring-Signale (Teil 5.7) — im Reranker implementieren (Schritt 17)
-20. `is_authoritative`-Flag bei Dokumenten (Schema-Teil von Teil 5.7 — nötig für Schritt 19)
+18. Phase 4.1 — Metadaten-Extraktion (language, doc_type, page_count)
+19. Content-Type-Erkennung + `content_type`-Spalte (Teil 4.6) — kleine Migration, entsperrt alles darunter
+20. Typspezifischer Chunking-Dispatch für Code/Config/Markdown (Teil 4.6) — nur Code, kein weiteres Schema
+21. Code-Symbol-Extraktion pro Chunk + `symbols[]`-Spalte + `start_line`/`end_line` (Teil 4.6) — hängt ab von 19
+22. Pro-Chunk-Keyword-Extraktion + GIN-Index für Prose (Teil 4.5) — parallel zu 21
+23. Payload-Suche als drittes RRF-Signal (Teil 4.2 — hängt ab von 21 + 22)
+24. Lokaler Reranker mit Boost-Signalen (Teil 4.3) — Werte aus DB
+25. Code-Symbol-Payload-Suche + Dateiname-Boost im Reranker (Teil 4.7 — hängt ab von 21 + 24)
+26. Aktualitäts- + Autoritäts-Scoring-Signale (Teil 5.7) — im Reranker implementieren (Schritt 24)
+27. `is_authoritative`-Flag + datengetriebene `confidence_score` (Teil 5.7)
+28. Stable chunk keys + thematische `related_chunk_ids[]` (Teil 5)
 
 **Post-Tender: Größere RAG-Arbeit**
-21. Phase 6.1 — Zusammenfassungs-Embeddings
-22. Themenverschiebungs-Erkennung für adaptives Chunking (Teil 5.5)
-23. Figur+Beschriftung-Kohäsion im Chunker (Teil 5.1)
-24. Retrieval-Qualitätsmetriken / Eval-Framework (Teil 5.8) + LLM-als-Richter Auto-Eval (Teil 6.1)
-25. Corrective RAG / CRAG (Teil 6.1)
-26. Adaptives RAG-Routing (Teil 6.1)
-27. Phase 3 — Bild-Speicher-Migration (wenn OCR-Parallelprojekt bereit)
-28. Phase 2/8 — OCR-Abstraktion + Multimodalität (inkl. Docling HierarchicalChunker 5.2, Formel-Anreicherung 5.4, mehrseitige Figuren-Zusammenführung 5.3)
-29. Mehrsprachiges Embedding-Modell-Evaluation (Teil 5.9 — bge-m3 / E5-Mistral)
+29. Phase 6.1 — Zusammenfassungs-Embeddings
+30. Hierarchisches Domain-Routing + Semantic Clustering HDBSCAN (Teil 6.1) — *Stanford-Semantic-Collapse-Antwort, größter Skalierungs-Hebel*
+31. Themenverschiebungs-Erkennung für adaptives Chunking (Teil 5.5)
+32. Figur+Beschriftung-Kohäsion im Chunker (Teil 5.1)
+33. Retrieval-Qualitätsmetriken / Eval-Framework (Teil 5.8) + OCR-Regressions-Harness + LLM-als-Richter Auto-Eval (Teil 6.1)
+34. Corrective RAG / CRAG (Teil 6.1)
+35. Adaptives RAG-Routing + Pre-LLM Tool-Routing (Teil 6.1)
+36. Phase 3 — Bild-Speicher-Migration (zusammen mit Bild-Hash-Dedup oben)
+37. Phase 2/8 — OCR-Abstraktion mit Hybrid Docling+Nanonets + Multimodalität (inkl. HierarchicalChunker 5.2, Bbox-Provenienz, Formel-Anreicherung 5.4, mehrseitige Figuren-Zusammenführung 5.3, OCR-Prompt-Bibliothek)
+38. Mehrsprachiges Embedding-Modell-Evaluation (Teil 5.9 — bge-m3 / E5-Mistral)
 
 **Plattform & Observability (laufend)**
-30. Follow-up-Prompt-Vorschläge (Teil 2)
-31. Persistentes Nutzer-Gedächtnis (Teil 2)
-32. Input-/Output-Guardrails (Teil 6.2)
-33. Dokument-Level-RAG-Zugriffskontrolle (Teil 6.2)
-34. Langfuse / OTel Trace-Integration (Teil 6.3)
-35. Prompt-Versionierungs-Registry (Teil 6.3)
-36. Kosten-Observability-Dashboard (Teil 6.3)
-37. Chat-Verzweigung / Konversationsbaum (Teil 2)
-38. SCIM 2.0-Provisionierung (Teil 3)
-39. GraphRAG — Entity-Graph (Teil 6.1, großer Aufwand, separate Phase)
+39. Follow-up-Prompt-Vorschläge (Teil 2)
+40. Persistentes Nutzer-Gedächtnis (Teil 2)
+41. Input-/Output-Guardrails (Teil 6.2)
+42. Dokument-Level-RAG-Zugriffskontrolle (Teil 6.2)
+43. Langfuse / OTel Trace-Integration (Teil 6.3)
+44. Prompt-Versionierungs-Registry (Teil 6.3) — inkl. Vision-Prompts als Einträge
+45. Kosten-Observability-Dashboard + RAG-Statistik-Tab (Teil 6.3)
+46. Default „RAG-Recherche-Assistent"-Template mit Tool-Routing-Tabelle (Teil 2)
+47. Ollama Modelfile-Builder + VRAM-Sizing (Teil 3)
+48. Chat-Verzweigung / Konversationsbaum (Teil 2)
+49. SCIM 2.0-Provisionierung (Teil 3)
+50. GraphRAG — Entity-Graph (Teil 6.1, großer Aufwand, separate Phase)
 
 ---
 
@@ -952,5 +1203,5 @@ Quellen: Web-Recherche zu RAG Best Practices 2025/2026, Open WebUI Feature-Set, 
 - Alle neuen Tabellen: `app_*` oder `pool_*` Präfix-Konvention
 - FastAPI Streaming-Endpunkte: immer `response_model=None` setzen
 - pgvector muss im Supabase Dashboard aktiviert sein vor jeder RAG-Tabellen-Erstellung
-- Vollständige RAG-Architektur-Begründung: siehe `xqt5-ai-plattform-dri/RAG-VERBESSERUNGSPLAN.md`
-- Phase-Abschlussstatus: siehe `xqt5-ai-plattform-dri/RAG-STATUS.md`
+- Phase-Abschlussstatus und Implementierungs-Historie: siehe `IMPLEMENTIERT.md`
+- OCR-Backend-Auswahl hängt von Host-GPU ab: ohne GPU bleibt Mistral (Cloud) oder Docling-solo; Hybrid `docling+nanonets` braucht GPU

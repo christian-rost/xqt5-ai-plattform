@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import { t } from '../i18n/strings'
 
 const TABS = [
   { id: 'users', label: 'Benutzer' },
@@ -403,6 +404,10 @@ function RetrievalTab() {
     rerank_model: 'rerank-v3.5',
     embedding_provider: 'openai',
     embedding_deployment: '',
+    contextual_retrieval_enabled: false,
+    contextual_retrieval_model: 'claude-haiku-4-5-20251001',
+    neighbor_chunks_enabled: true,
+    max_context_tokens: 6000,
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -465,6 +470,10 @@ function RetrievalTab() {
         rerank_model: data.rerank_model || 'rerank-v3.5',
         embedding_provider: data.embedding_provider || 'openai',
         embedding_deployment: data.embedding_deployment || '',
+        contextual_retrieval_enabled: !!data.contextual_retrieval_enabled,
+        contextual_retrieval_model: data.contextual_retrieval_model || 'claude-haiku-4-5-20251001',
+        neighbor_chunks_enabled: data.neighbor_chunks_enabled !== false,
+        max_context_tokens: data.max_context_tokens ?? 6000,
       })
     } catch (e) {
       setError(e.message)
@@ -485,6 +494,10 @@ function RetrievalTab() {
         rerank_model: (form.rerank_model || 'rerank-v3.5').trim(),
         embedding_provider: form.embedding_provider || 'openai',
         embedding_deployment: (form.embedding_deployment || '').trim(),
+        contextual_retrieval_enabled: !!form.contextual_retrieval_enabled,
+        contextual_retrieval_model: (form.contextual_retrieval_model || 'claude-haiku-4-5-20251001').trim(),
+        neighbor_chunks_enabled: !!form.neighbor_chunks_enabled,
+        max_context_tokens: Math.max(1000, Math.min(32000, Number(form.max_context_tokens) || 6000)),
       }
       if (payload.rerank_top_n > payload.rerank_candidates) {
         payload.rerank_top_n = payload.rerank_candidates
@@ -498,6 +511,10 @@ function RetrievalTab() {
         rerank_model: updated.rerank_model || payload.rerank_model,
         embedding_provider: updated.embedding_provider || payload.embedding_provider,
         embedding_deployment: updated.embedding_deployment ?? payload.embedding_deployment,
+        contextual_retrieval_enabled: !!updated.contextual_retrieval_enabled,
+        contextual_retrieval_model: updated.contextual_retrieval_model || payload.contextual_retrieval_model,
+        neighbor_chunks_enabled: updated.neighbor_chunks_enabled !== false,
+        max_context_tokens: updated.max_context_tokens ?? payload.max_context_tokens,
       })
     } catch (e) {
       setError(e.message)
@@ -589,6 +606,75 @@ function RetrievalTab() {
           </div>
         </div>
 
+        <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+        <h4 style={{ margin: '0 0 12px', color: 'var(--text-primary)' }}>
+          {t('admin.rag.section.context_assembly')}
+        </h4>
+        <div className="form-row">
+          <div className="form-group">
+            <label>{t('admin.rag.neighbor.label')}</label>
+            <label className="toggle-switch" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={!!form.neighbor_chunks_enabled}
+                onChange={() => setForm((f) => ({ ...f, neighbor_chunks_enabled: !f.neighbor_chunks_enabled }))}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+            <span className="provider-hint" style={{ display: 'block', marginTop: 4 }}>
+              {t('admin.rag.neighbor.hint')}
+            </span>
+          </div>
+          <div className="form-group">
+            <label>{t('admin.rag.max_tokens.label')}</label>
+            <input
+              className="form-input"
+              type="number"
+              min="1000"
+              max="32000"
+              step="500"
+              value={form.max_context_tokens}
+              onChange={(e) => setForm((f) => ({ ...f, max_context_tokens: e.target.value }))}
+            />
+            <span className="provider-hint" style={{ display: 'block', marginTop: 4 }}>
+              {t('admin.rag.max_tokens.hint')}
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ margin: '16px 0', borderColor: 'var(--border)' }} />
+        <h4 style={{ margin: '0 0 12px', color: 'var(--text-primary)' }}>
+          {t('admin.rag.section.contextual_retrieval')}
+        </h4>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>
+          {t('admin.rag.contextual.description')}
+        </p>
+        <div className="form-row">
+          <div className="form-group">
+            <label>{t('admin.rag.contextual.enabled.label')}</label>
+            <label className="toggle-switch" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={!!form.contextual_retrieval_enabled}
+                onChange={() => setForm((f) => ({ ...f, contextual_retrieval_enabled: !f.contextual_retrieval_enabled }))}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+          <div className="form-group">
+            <label>{t('admin.rag.contextual.model.label')}</label>
+            <input
+              className="form-input"
+              value={form.contextual_retrieval_model}
+              onChange={(e) => setForm((f) => ({ ...f, contextual_retrieval_model: e.target.value }))}
+              placeholder="claude-haiku-4-5-20251001"
+            />
+            <span className="provider-hint" style={{ display: 'block', marginTop: 4 }}>
+              {t('admin.rag.contextual.model.hint')}
+            </span>
+          </div>
+        </div>
+
         <button className="btn btn-primary btn-small" type="submit" disabled={saving}>
           {saving ? 'Speichern...' : 'Speichern'}
         </button>
@@ -596,7 +682,7 @@ function RetrievalTab() {
 
       {settings && (
         <div className="provider-hint" style={{ marginTop: 12 }}>
-          Aktive Werte: embedding={settings.embedding_provider}{settings.embedding_provider === 'azure' && settings.embedding_deployment ? `/${settings.embedding_deployment}` : ''}, rerank={String(!!settings.rerank_enabled)}, candidates={settings.rerank_candidates}, top_n={settings.rerank_top_n}, model={settings.rerank_model}
+          Aktive Werte: embedding={settings.embedding_provider}{settings.embedding_provider === 'azure' && settings.embedding_deployment ? `/${settings.embedding_deployment}` : ''}, rerank={String(!!settings.rerank_enabled)}, candidates={settings.rerank_candidates}, top_n={settings.rerank_top_n}, model={settings.rerank_model}, nachbar-chunks={String(settings.neighbor_chunks_enabled !== false)}, max-token={settings.max_context_tokens ?? 6000}, kontext-retrieval={String(!!settings.contextual_retrieval_enabled)}
         </div>
       )}
 

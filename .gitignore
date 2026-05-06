@@ -40,3 +40,6 @@ tmp/
 
 # Docker
 *.local
+
+# Claude Code project instructions (local for now)
+CLAUDE.md
