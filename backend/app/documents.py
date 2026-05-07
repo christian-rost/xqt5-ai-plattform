@@ -4,14 +4,34 @@ import hashlib
 import logging
 import json
 import re
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
+import imagehash
+from PIL import Image
 
 from .config import MISTRAL_OCR_STRUCTURED
 from .database import supabase
 
 logger = logging.getLogger(__name__)
+
+# Hard cap on raw pixel count so a malformed/adversarial image can't blow
+# up memory in PIL.Image.open. 50 MP covers any realistic OCR figure crop.
+Image.MAX_IMAGE_PIXELS = 50_000_000
+
+# Hamming-distance threshold for treating two perceptual hashes as the same
+# image. Within-document logo crops typically hash at distance 0-2; we
+# leave headroom for slight scaling/compression variance without conflating
+# distinct figures. Tighter than the standard "near-duplicate" 6 because we
+# only dedup within a single document where false positives matter more
+# than false negatives.
+PHASH_HAMMING_THRESHOLD = 4
+
+# Skip pHash on byte payloads above this size — defense against
+# decompression bombs hidden in the data URI. OCR-extracted figures are
+# almost always <500 KB; 20 MB is far beyond legitimate.
+PHASH_MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 IMAGE_MIME_BY_EXT = {
     ".png": "image/png",
@@ -575,7 +595,49 @@ def _extract_image_assets_from_pages(pages: List[Dict[str, Any]]) -> List[Dict[s
                 }
             )
 
+    _mark_recurring_by_phash(assets)
     return assets
+
+
+def _mark_recurring_by_phash(assets: List[Dict[str, Any]]) -> None:
+    """Tag perceptual-near-duplicate images within a document.
+
+    Walks the asset list in extraction order. Each `embedded_image` gets a
+    `phash`; if its hash is within Hamming distance ≤ PHASH_HAMMING_THRESHOLD
+    of any previously-seen non-recurring image, it's marked `recurring=True`
+    so the asset-search RPC excludes it. The first occurrence per cluster is
+    kept as canonical.
+
+    Mutates the assets list in place. Skips non-embedded types (e.g.
+    upload_image), and gracefully no-ops for assets whose data URI cannot
+    be decoded or whose pHash cannot be computed.
+    """
+    seen: List[imagehash.ImageHash] = []
+    for asset in assets:
+        if asset.get("asset_type") != "embedded_image":
+            continue
+        storage_path = asset.get("storage_path") or ""
+        if not storage_path.startswith("data:") or "," not in storage_path:
+            continue
+        try:
+            image_bytes = base64.b64decode(storage_path.split(",", 1)[1])
+        except (ValueError, base64.binascii.Error):
+            continue
+        phash_hex = compute_phash(image_bytes)
+        if phash_hex is None:
+            continue
+        asset["phash"] = phash_hex
+        asset["recurring"] = False
+        try:
+            current = imagehash.hex_to_hash(phash_hex)
+        except ValueError:
+            continue
+        for prev in seen:
+            if (current - prev) <= PHASH_HAMMING_THRESHOLD:
+                asset["recurring"] = True
+                break
+        if not asset["recurring"]:
+            seen.append(current)
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -630,6 +692,21 @@ def _image_data_uri_from_ocr_image(image_obj: Dict[str, Any]) -> Tuple[str, str]
 def compute_file_hash(file_bytes: bytes) -> str:
     """SHA-256 hex digest of raw file bytes; used for upload dedup."""
     return hashlib.sha256(file_bytes).hexdigest()
+
+
+def compute_phash(image_bytes: bytes) -> Optional[str]:
+    """64-bit perceptual hash of an image, hex-encoded.
+
+    Returns None for unparseable, oversized, or decompression-bomb images
+    so callers can skip dedup without crashing the upload pipeline.
+    """
+    if not image_bytes or len(image_bytes) > PHASH_MAX_IMAGE_BYTES:
+        return None
+    try:
+        with Image.open(BytesIO(image_bytes)) as im:
+            return str(imagehash.phash(im))
+    except (Image.DecompressionBombError, Image.UnidentifiedImageError, OSError, ValueError):
+        return None
 
 
 def find_existing_document_by_hash(
@@ -952,6 +1029,8 @@ def create_document_assets(
             "height": _safe_int(asset.get("height")),
             "caption": str(asset.get("caption", "")).strip()[:4000],
             "ocr_text": str(asset.get("ocr_text", "")).strip()[:20000],
+            "phash": asset.get("phash"),
+            "recurring": bool(asset.get("recurring", False)),
         }
 
         if embeddings and idx < len(embeddings) and embeddings[idx]:

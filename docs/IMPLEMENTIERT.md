@@ -104,3 +104,64 @@ Die folgenden RAG-Verbesserungen wurden aus `xqt5-ai-plattform-dri` in `xqt5-ai-
   2. Falls der Nutzer etwas fragt, das nichts mit den Dokumenten zu tun hat, aus eigenem Wissen antworten — Dokumente nicht referenzieren
   3. Antworten auf bereitgestellten Kontext basieren, klar kommunizieren wenn Information fehlt
 - Datei: `main.py` → `_apply_document_access_policy()`
+
+---
+
+## Admin-UI Frontend-Toggles (2026-05-06)
+
+Drei Backend-RAG-Settings (Phase 4.2 Contextual Retrieval, Phase 5.3 Nachbar-Chunks, Phase 7.1 Token-Budget) waren am Backend bereits aktiv, aber ohne UI nur über manuelle Bearbeitung der `app_runtime_config.rag_settings`-JSONB-Zeile zu ändern. Die Toggles wurden im `RetrievalTab` von `AdminDashboard.jsx` ergänzt: Neue `<hr>`-getrennte Sektionen "Kontextzusammenstellung" und "Kontextuelles Retrieval", form-state + GET/PUT-Mappings + footer-Zusammenfassung, alle vier neuen Felder (`contextual_retrieval_enabled`, `contextual_retrieval_model`, `neighbor_chunks_enabled`, `max_context_tokens`) verwenden snake_case wie das Backend-Pydantic-Modell.
+
+**i18n-Vorbereitung:** Erstmaliger Einsatz eines minimalen i18n-Helpers `frontend/src/i18n/strings.js` mit `t(key)`-Funktion und Deutsch-Default-Dict. Alle neuen UI-Strings laufen darüber statt hartcodiert in JSX zu landen — bestehende hartcodierte deutsche Strings bleiben unverändert (Refactor wäre eigene Aufgabe).
+
+Dateien: `frontend/src/components/AdminDashboard.jsx`, `frontend/src/i18n/strings.js` (neu)
+
+---
+
+## Content-Hash Upload-Deduplikation (A1, 2026-05-06)
+
+Verhindert OCR + Embedding-Recompute, wenn ein Nutzer dieselbe Datei zweimal hochlädt.
+
+- SHA-256-Hex der hochgeladenen Bytes wird beim Upload berechnet (`compute_file_hash()` in `documents.py`)
+- Vor OCR wird in `app_documents` gegen den Hash geprüft (`find_existing_document_by_hash()`); Match → bestehender Datensatz wird zurückgegeben, Audit-Log-Event `document.upload.dedup_skipped` geschrieben
+- Scope-Regeln: pool-weit wenn `pool_id` gegeben, sonst per-User mit `chat_id` als zusätzlichem Filter wenn vorhanden
+- Migration `supabase/migrations/20260506_a_content_hash.sql`: `content_hash TEXT` Spalte plus zwei partielle composite indexes (`(pool_id, content_hash)` und `(user_id, content_hash)`, jeweils `WHERE content_hash IS NOT NULL`)
+- `create_document()` Signatur um `content_hash: Optional[str] = None` erweitert; bestehende Aufrufer unverändert
+- Audit-Konstante `DOCUMENT_UPLOAD_DEDUP_SKIPPED` in `audit.py`
+- Wiring in beiden Upload-Routen (`upload_document` und `upload_pool_document` in `main.py`)
+- **Status:** Code deployed und Migration auf dev angewendet 2026-05-06; prod-Migration noch ausstehend bis bewusste Freigabe
+
+Dateien: `supabase/migrations/20260506_a_content_hash.sql`, `backend/app/documents.py`, `backend/app/audit.py`, `backend/app/main.py`
+
+---
+
+## DB-Sicherheits-Härtung — Anon + Authenticated Rolle revoked (2026-05-06)
+
+Supabase Studio Security Advisor meldete ~30 Warnungen, die meisten "RLS not enabled" auf `public`-Tabellen. Verifikation per curl mit dem Anon-JWT auf prod ergab: Anon hatte tatsächlich Lesezugriff auf alle `app_*` und `pool_*` Tabellen inklusive `app_users.password_hash` und `pool_invite_links.token`. Da der Anon-Key bei Supabase als „öffentlich teilbar" konzipiert ist, war das eine reale Datenexposition.
+
+- Migration `20260506_b_revoke_anon_public.sql`: `REVOKE ALL` auf TABLES/SEQUENCES/FUNCTIONS in `public` für `anon`, plus `ALTER DEFAULT PRIVILEGES FOR ROLE postgres, supabase_admin` analog für künftige Objekte
+- Migration `20260507_revoke_authenticated_public.sql`: identische Behandlung für die `authenticated`-Rolle, da dieselbe Bug-Klasse via JWT mit `role: authenticated` ausnutzbar wäre
+- `service_role` blieb unangetastet — der Backend hängt davon ab
+- Verifikation: nach Anwendung liefert dieselbe curl auf alle 6 getesteten Tabellen `HTTP 401 42501 permission denied`. App funktioniert unverändert (Backend nutzt service-role)
+- **Status:** beide Migrationen auf prod angewendet 2026-05-06; dev hat aktuell keine Anon/Authenticated-Rollen exponiert, dort idempotent ausstehend
+
+Vollständiges Bedrohungsmodell, offene Lücken und Verifikationsbefehle: `docs/SECURITY.md` (neu, kanonischer Sicherheits-Track-Record).
+
+Dateien: `supabase/migrations/20260506_b_revoke_anon_public.sql`, `supabase/migrations/20260507_revoke_authenticated_public.sql`, `docs/SECURITY.md`
+
+---
+
+## Bild-pHash Deduplikation (A2, 2026-05-06)
+
+Verhindert, dass dasselbe Logo, der Briefkopf oder ein wiederkehrendes Header-Bild eines mehrseitigen PDFs als N separate Asset-Zeilen abgelegt und N-mal aus RAG zurückgegeben wird.
+
+- `compute_phash()` in `documents.py` berechnet 64-bit perzeptuellen Hash via `imagehash.phash()` über `PIL.Image`. Schutz gegen Decompression-Bombs: `Image.MAX_IMAGE_PIXELS = 50_000_000` auf Modulebene + 20-MB Byte-Cap im Helper + try/except auf `DecompressionBombError` und `UnidentifiedImageError`
+- `_mark_recurring_by_phash()` läuft am Ende von `_extract_image_assets_from_pages()` über die gesammelten `embedded_image`-Assets, dekodiert die Data-URI, vergleicht jeden Hash gegen alle bisher als „Canonical" markierten via Hamming-Distanz. Threshold = 4 (innerhalb desselben Dokuments hashen Logo-Crops typisch bei 0–2; 4 ist eng genug um verschiedene Diagramme nicht fälschlich zu mergen)
+- Erste Vorkommen pro Cluster bleiben mit `recurring=False` als kanonisch erhalten; nachfolgende werden `recurring=True` markiert
+- `upload_image`-Assets werden übersprungen (Einzelnutzer-Upload, kein Dedup-Ziel); `page_image` wird vom Code derzeit nicht geschrieben
+- `create_document_assets()` erweitert die Insert-Zeile um `phash` und `recurring`
+- Migration `supabase/migrations/20260506_c_asset_phash_recurring.sql`: `phash TEXT` und `recurring BOOLEAN NOT NULL DEFAULT FALSE` auf `app_document_assets`, plus partieller Index `(document_id, phash) WHERE phash IS NOT NULL`. `match_document_assets`-RPC mit unverändertem Signaturen-Layout neu definiert (3-Branch IF/ELSIF/ELSE pool/chat/global), in jedem Branch Filter `AND a.recurring = FALSE`
+- Neue Python-Dependencies `Pillow>=10.0.0` und `imagehash>=4.3.1` in `pyproject.toml` und `Dockerfile` pip-install-Zeile (manylinux-wheels verfügbar, kein apt-get nötig auf python:3.11-slim)
+- **Cross-Document-Dedup ist ausdrücklich nicht implementiert** — würde tenant-scoped phash-Index oder kanonische Asset-Tabelle benötigen, ist als Future-Work in `docs/TODO.md` zu vermerken
+- **Status:** Code zum Commit fertig; Migration noch nicht angewendet (gleicher Workflow wie A1: paste-in-Studio auf dev, dann prod nach Bedarf)
+
+Dateien: `supabase/migrations/20260506_c_asset_phash_recurring.sql`, `backend/app/documents.py`, `backend/pyproject.toml`, `backend/Dockerfile`

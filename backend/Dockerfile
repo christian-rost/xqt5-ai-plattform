@@ -8,7 +8,8 @@ WORKDIR /app
 COPY pyproject.toml /app/pyproject.toml
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir fastapi uvicorn[standard] python-dotenv httpx pydantic \
-      python-multipart cryptography python-jose[cryptography] bcrypt slowapi redis supabase pypdf tiktoken
+      python-multipart cryptography python-jose[cryptography] bcrypt slowapi redis supabase pypdf tiktoken \
+      Pillow imagehash
 
 COPY app /app/app
 
