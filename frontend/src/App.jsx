@@ -467,7 +467,7 @@ export default function App() {
     setActiveSection('pools')
     setActivePool(pool)
     setDisplayedPool(pool)
-    setPoolTab('chats')
+    setPoolTab('overview')
     setSidebarOpen(false)
   }
 

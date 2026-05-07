@@ -1,6 +1,18 @@
 import { useState } from 'react'
 import CreatePoolDialog from './CreatePoolDialog'
 import UsageWidget from './UsageWidget'
+import { t } from '../i18n/strings'
+
+function IconOverview() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="8" height="8" />
+      <rect x="13" y="3" width="8" height="8" />
+      <rect x="3" y="13" width="8" height="8" />
+      <rect x="13" y="13" width="8" height="8" />
+    </svg>
+  )
+}
 
 function IconDocs() {
   return (
@@ -184,6 +196,13 @@ export default function Sidebar({
 
         {/* Tab navigation */}
         <nav className="pool-nav-tabs">
+          <button
+            className={`pool-nav-item${poolTab === 'overview' ? ' active' : ''}`}
+            onClick={() => onPoolTabChange('overview')}
+          >
+            <IconOverview />
+            <span>{t('pool.tab.overview')}</span>
+          </button>
           <button
             className={`pool-nav-item${poolTab === 'documents' ? ' active' : ''}`}
             onClick={() => onPoolTabChange('documents')}

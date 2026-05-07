@@ -165,3 +165,19 @@ Verhindert, dass dasselbe Logo, der Briefkopf oder ein wiederkehrendes Header-Bi
 - **Status:** Code zum Commit fertig; Migration noch nicht angewendet (gleicher Workflow wie A1: paste-in-Studio auf dev, dann prod nach Bedarf)
 
 Dateien: `supabase/migrations/20260506_c_asset_phash_recurring.sql`, `backend/app/documents.py`, `backend/pyproject.toml`, `backend/Dockerfile`
+
+---
+
+## Pool-UI: Persistenter Header + Übersichts-Seite (2026-05-06)
+
+Bisher musste man Tabs (Dokumente / Chats / Mitglieder) wechseln um zu sehen wer im Pool ist oder welche Chats existieren. Beim Öffnen eines Chats verlor man auch jeglichen Pool-Kontext. Zwei UI-Verbesserungen, frontend-only, kein Backend nötig (alle Endpunkte existieren bereits):
+
+**Persistenter Pool-Header** — `frontend/src/components/PoolHeader.jsx` (neu): kompakter Streifen über jedem Pool-Inhalt (auch in offenen Chats), zeigt Pool-Icon, Name, Beschreibung, Avatar-Reihe der ersten 5 Mitglieder mit `+N`-Overflow, sowie klickbare Counts für Dokumente/Chats/Mitglieder. Klick auf Avatar oder Count → `onTabChange()`. Die Komponente hat null-safety für fehlendes Icon, fehlende Beschreibung und kürzere Mitgliederlisten.
+
+**Übersichts-Tab als neuer Default** — `frontend/src/components/PoolOverview.jsx` (neu): Landing-Seite beim Öffnen eines Pools mit vier Karten-Sektionen: Pool-Zusammenfassung, Mitglieder-Vorschau (5 + „Alle anzeigen"), zuletzt erstellte Chats (5), zuletzt hochgeladene Dokumente (5). Jede Sektion hat Empty-State und „Alle anzeigen"-Button der zum entsprechenden Tab wechselt.
+
+Wiring: `Sidebar.jsx` bekommt eine neue `IconOverview`-Komponente und einen vierten Tab-Button (vor Documents/Chats/Members) ohne Count-Badge. `App.jsx` setzt `setPoolTab('overview')` beim Pool-Öffnen statt vorher `'chats'`. `PoolDetail.jsx` rendert `PoolHeader` immer als ersten Flex-Child von `.pool-detail` und `PoolOverview` wenn `activeTab === 'overview'`. `.pool-detail` ist bereits `display: flex; flex-direction: column; overflow: hidden` — keine CSS-Anpassung am Layout nötig, der Chat-Bereich flext sich korrekt unter dem Header ein.
+
+i18n: 19 neue Keys unter `pool.header.*`, `pool.overview.*`, `pool.tab.overview` in `frontend/src/i18n/strings.js`. Alle UI-Strings laufen durch den `t()`-Helper, kein hartcodierter Text in JSX.
+
+Dateien: `frontend/src/components/PoolHeader.jsx` (neu), `frontend/src/components/PoolOverview.jsx` (neu), `frontend/src/components/PoolDetail.jsx`, `frontend/src/components/Sidebar.jsx`, `frontend/src/App.jsx`, `frontend/src/styles.css`, `frontend/src/i18n/strings.js`

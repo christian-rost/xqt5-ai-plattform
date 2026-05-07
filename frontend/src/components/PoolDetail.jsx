@@ -4,6 +4,8 @@ import PoolDocuments from './PoolDocuments'
 import PoolChatList from './PoolChatList'
 import PoolChatArea from './PoolChatArea'
 import PoolMembers from './PoolMembers'
+import PoolHeader from './PoolHeader'
+import PoolOverview from './PoolOverview'
 
 export default function PoolDetail({
   pool,
@@ -189,7 +191,12 @@ export default function PoolDetail({
   return (
     <main className="pool-detail">
       {error && <p className="error-banner">{error}</p>}
-
+      <PoolHeader
+        pool={pool}
+        counts={{ docs: documents.length, chats: chats.length, members: members.length }}
+        members={members}
+        onTabChange={onTabChange}
+      />
       {activeTab === 'chats' && activeChat ? (
         <PoolChatArea
           chat={activeChat}
@@ -205,6 +212,18 @@ export default function PoolDetail({
         />
       ) : (
         <div className="pool-content">
+          {activeTab === 'overview' && (
+            <PoolOverview
+              pool={pool}
+              members={members}
+              chats={chats}
+              documents={documents}
+              onTabChange={onTabChange}
+              onOpenChat={handleOpenChat}
+              onOpenDocument={() => onTabChange('documents')}
+            />
+          )}
+
           {activeTab === 'documents' && (
             <PoolDocuments
               poolId={pool.id}

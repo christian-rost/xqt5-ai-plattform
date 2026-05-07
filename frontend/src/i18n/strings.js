@@ -23,6 +23,26 @@ const STRINGS = {
     'admin.rag.contextual.model.label': 'Modell für Kontextgenerierung',
     'admin.rag.contextual.model.hint':
       'Günstigstes verfügbares Modell empfohlen (z.B. Haiku, Mistral-Small)',
+
+    'pool.header.count.chats': 'Chats',
+    'pool.header.count.docs': 'Dokumente',
+    'pool.header.count.members': 'Mitglieder',
+    'pool.header.role.admin': 'Administrator:in',
+    'pool.header.role.editor': 'Bearbeiter:in',
+    'pool.header.role.owner': 'Eigentümer:in',
+    'pool.header.role.viewer': 'Betrachter:in',
+    'pool.overview.chat.message_count': 'Nachrichten',
+    'pool.overview.chat.private': 'Privat',
+    'pool.overview.chat.shared': 'Geteilt',
+    'pool.overview.no_chats': 'Noch keine Chats',
+    'pool.overview.no_documents': 'Noch keine Dokumente',
+    'pool.overview.no_members': 'Noch keine Mitglieder',
+    'pool.overview.see_all': 'Alle anzeigen',
+    'pool.overview.section.chats': 'Chats',
+    'pool.overview.section.documents': 'Dokumente',
+    'pool.overview.section.members': 'Mitglieder',
+    'pool.overview.section.summary': 'Übersicht',
+    'pool.tab.overview': 'Übersicht',
   },
   en: {
     // Placeholder for future English translations. Until populated, t() falls
