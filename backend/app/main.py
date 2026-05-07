@@ -1022,6 +1022,28 @@ async def upload_document(
         if not storage.verify_conversation_owner(chat_id, current_user["id"]):
             raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # Content-hash dedup: if the same bytes were uploaded earlier to the same
+    # scope (chat or user-global), reuse that document and skip OCR + embedding.
+    content_hash = documents_mod.compute_file_hash(file_bytes)
+    existing = documents_mod.find_existing_document_by_hash(
+        content_hash=content_hash,
+        user_id=current_user["id"],
+        chat_id=chat_id,
+    )
+    if existing:
+        logger.info(
+            "Upload dedup hit user=%s chat=%s hash=%s -> doc=%s",
+            current_user["id"], chat_id or "-", content_hash[:8], existing["id"],
+        )
+        audit.log_event(
+            audit.DOCUMENT_UPLOAD_DEDUP_SKIPPED,
+            user_id=current_user["id"],
+            target_type="document",
+            target_id=existing["id"],
+            metadata={"filename": file.filename, "content_hash": content_hash},
+        )
+        return existing
+
     # Extract text
     try:
         extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(
@@ -1043,6 +1065,7 @@ async def upload_document(
         file_type=file_type,
         file_size_bytes=len(file_bytes),
         extracted_text=extracted_text,
+        content_hash=content_hash,
     )
 
     # Process: chunk + embed (async but awaited)
@@ -1737,6 +1760,32 @@ async def upload_pool_document(
     if len(file_bytes) > max_bytes:
         raise HTTPException(status_code=400, detail=f"File exceeds {MAX_UPLOAD_SIZE_MB}MB limit")
 
+    # Content-hash dedup: if the same bytes were uploaded earlier to the same
+    # pool, reuse that document and skip OCR + embedding.
+    content_hash = documents_mod.compute_file_hash(file_bytes)
+    existing = documents_mod.find_existing_document_by_hash(
+        content_hash=content_hash,
+        user_id=current_user["id"],
+        pool_id=pool_id,
+    )
+    if existing:
+        logger.info(
+            "Pool upload dedup hit pool=%s hash=%s -> doc=%s",
+            pool_id, content_hash[:8], existing["id"],
+        )
+        audit.log_event(
+            audit.DOCUMENT_UPLOAD_DEDUP_SKIPPED,
+            user_id=current_user["id"],
+            target_type="document",
+            target_id=existing["id"],
+            metadata={
+                "filename": file.filename,
+                "pool_id": pool_id,
+                "content_hash": content_hash,
+            },
+        )
+        return existing
+
     try:
         extracted_text, ocr_assets = await documents_mod.extract_text_and_assets(
             file.filename, file_bytes, user_id=current_user["id"]
@@ -1757,6 +1806,7 @@ async def upload_pool_document(
         file_size_bytes=len(file_bytes),
         extracted_text=extracted_text,
         pool_id=pool_id,
+        content_hash=content_hash,
     )
 
     try:

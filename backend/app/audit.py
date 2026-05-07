@@ -23,6 +23,8 @@ CHAT_CONVERSATION_CREATE = "chat.conversation.create"
 CHAT_CONVERSATION_DELETE = "chat.conversation.delete"
 CHAT_MESSAGE_SEND = "chat.message.send"
 
+DOCUMENT_UPLOAD_DEDUP_SKIPPED = "document.upload.dedup_skipped"
+
 
 def log_event(
     action: str,

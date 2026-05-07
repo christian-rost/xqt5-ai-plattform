@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import hashlib
 import logging
 import json
 import re
@@ -626,6 +627,50 @@ def _image_data_uri_from_ocr_image(image_obj: Dict[str, Any]) -> Tuple[str, str]
     return "", ""
 
 
+def compute_file_hash(file_bytes: bytes) -> str:
+    """SHA-256 hex digest of raw file bytes; used for upload dedup."""
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+def find_existing_document_by_hash(
+    content_hash: str,
+    user_id: str,
+    pool_id: Optional[str] = None,
+    chat_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Look up a previously-uploaded document with the same content hash.
+
+    Scope rules:
+      - pool_id given: pool-wide dedup (same hash uploaded to same pool by anyone)
+      - chat_id given (no pool): per-user dedup within that chat
+      - neither: per-user dedup at the user's no-chat global scope
+
+    Returns the document row dict or None if no match exists.
+    """
+    query = (
+        supabase.table("app_documents")
+        .select("*")
+        .eq("content_hash", content_hash)
+    )
+    if pool_id:
+        query = query.eq("pool_id", pool_id)
+    elif chat_id:
+        query = (
+            query.eq("user_id", user_id)
+            .eq("chat_id", chat_id)
+            .is_("pool_id", "null")
+        )
+    else:
+        query = (
+            query.eq("user_id", user_id)
+            .is_("chat_id", "null")
+            .is_("pool_id", "null")
+        )
+    result = query.limit(1).execute()
+    rows = result.data or []
+    return rows[0] if rows else None
+
+
 def create_document(
     user_id: str,
     chat_id: Optional[str],
@@ -634,6 +679,7 @@ def create_document(
     file_size_bytes: int,
     extracted_text: str,
     pool_id: Optional[str] = None,
+    content_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     if chat_id and pool_id:
         raise ValueError("Document cannot belong to both chat and pool scope")
@@ -650,6 +696,8 @@ def create_document(
         row["chat_id"] = chat_id
     if pool_id:
         row["pool_id"] = pool_id
+    if content_hash:
+        row["content_hash"] = content_hash
     result = supabase.table("app_documents").insert(row).execute()
     return result.data[0]
 
