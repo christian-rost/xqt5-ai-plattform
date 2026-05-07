@@ -1,0 +1,94 @@
+-- ============================================================================
+-- Migration template for xqt5-ai-plattform
+-- ============================================================================
+-- Copy this file when authoring a new migration. Filename convention:
+--     YYYYMMDD_<letter>_<short_slug>.sql
+-- Letter is a, b, c, ... when several migrations land on the same date.
+-- Example: 20260506_c_asset_phash_recurring.sql
+--
+-- Naming conventions for new tables:
+--   app_*    user-owned application tables (chats, documents, settings)
+--   pool_*   shared-pool / multi-tenant tables
+--   _*       internal / system tables (e.g. _app_migrations)
+--
+-- Apply path: baked into backend image, applied by backend/app/migrate.py via
+-- Supabase /pg/query (runs as Postgres role supabase_admin). Until that runner
+-- ships, paste into Studio SQL editor (also runs as supabase_admin).
+--
+-- Post-deploy verification (anon must get HTTP 401):
+--   curl -s -o /dev/null -w "%{http_code}\n" \
+--     -H "apikey: $SBANON" \
+--     "$SBURL/rest/v1/<new_table>?select=*&limit=1"
+-- Expected: 401   (42501 permission denied for table <new_table>)
+-- ============================================================================
+
+-- 1. Extensions (only if a new one is genuinely required) -------------------
+-- CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. Table -------------------------------------------------------------------
+-- Conventions:
+--   - PRIMARY KEY: UUID with gen_random_uuid() unless there is a natural key
+--     (settings rows, provider names) in which case make the natural key the PK.
+--   - FK to existing tables: ON DELETE CASCADE for tenant ownership chains
+--     (user_id, pool_id, document_id), ON DELETE SET NULL for soft references
+--     (e.g. message.user_id where the row should outlive the user).
+--   - Timestamps: created_at TIMESTAMPTZ DEFAULT now(); add updated_at only if
+--     the row is mutable in place.
+--   - Booleans default explicitly (true / false), never NULL.
+--   - JSONB for free-form metadata; never TEXT.
+CREATE TABLE IF NOT EXISTS app_example (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID         NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    pool_id     UUID         REFERENCES pool_pools(id) ON DELETE CASCADE,
+    name        TEXT         NOT NULL,
+    metadata    JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    is_active   BOOLEAN      NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- 3. Indexes -----------------------------------------------------------------
+-- Index every FK that participates in a hot WHERE / JOIN.
+-- Index any column used for ORDER BY in list endpoints.
+-- Composite indexes mirror query order, not declaration order.
+CREATE INDEX IF NOT EXISTS idx_app_example_user_id ON app_example(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_example_pool_id ON app_example(pool_id);
+
+-- 4. Security: belt-and-suspenders REVOKE -----------------------------------
+-- ALTER DEFAULT PRIVILEGES from 20260506_b_revoke_anon_public.sql already
+-- protects new tables created by supabase_admin / postgres. These explicit
+-- REVOKEs make the migration self-contained: the file itself documents the
+-- security posture, and the table stays locked even if defaults are ever
+-- dropped or the table is created by a non-listed role.
+REVOKE ALL ON TABLE app_example FROM anon;
+-- If the table has its own SEQUENCE (rare with UUID PKs), revoke that too:
+-- REVOKE ALL ON SEQUENCE app_example_<col>_seq FROM anon;
+
+-- 5. RPC function (PostgREST) — only if this migration adds one ------------
+-- CREATE OR REPLACE FUNCTION public.example_rpc(arg UUID)
+-- RETURNS TABLE (...) LANGUAGE plpgsql AS $$
+-- BEGIN
+--     RETURN QUERY SELECT ... FROM app_example WHERE user_id = arg;
+-- END;
+-- $$;
+-- Lock down explicitly — defaults handle this for supabase_admin-created
+-- functions, but stating it here keeps the file self-auditing:
+-- REVOKE ALL ON FUNCTION public.example_rpc(UUID) FROM anon, PUBLIC;
+
+-- 6. ALTER on existing tables -----------------------------------------------
+-- New columns inherit the table's existing grants. Since 20260506_b_*
+-- already revoked anon access on every existing public table, ADD COLUMN is
+-- safe by default. No extra REVOKE needed when only adding columns to a
+-- table that was created before the revoke migration. If you ALTER a table
+-- to add new sensitive columns and the table predates the revoke, re-run
+-- the revoke explicitly:
+-- ALTER TABLE app_existing ADD COLUMN secret_field TEXT;
+-- REVOKE ALL ON TABLE app_existing FROM anon;
+
+-- 7. Seed data --------------------------------------------------------------
+-- Use INSERT ... ON CONFLICT DO NOTHING so re-running the migration is a
+-- no-op (the migration runner uses filename-based idempotency, but defence
+-- in depth never hurts).
+-- INSERT INTO app_settings (key, value)
+-- VALUES ('example_setting', '"default"'::jsonb)
+-- ON CONFLICT (key) DO NOTHING;

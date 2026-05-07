@@ -313,6 +313,41 @@ Quellen: `kvml_test/` — die Anforderungen sind direkt als Produktverbesserunge
   - **Fehlend:** Datei-Uploads nicht geloggt — `audit.log_event()`-Aufrufe in Upload-Handlern in `main.py` und `documents.py` hinzufügen
   - **Fehlend:** Token-Counts fehlen in LLM-Audit-Einträgen — `metadata`-Payload bei `main.py:763` um `prompt_tokens` und `completion_tokens` erweitern
 
+- [x] **DB-Sicherheits-Posture klären (Supabase Advisor 2026-05-06)** — abgeschlossen für Anon, Folge-Migrationen siehe unten
+  - Vollständige Analyse + Verifikationsbefehle: `docs/SECURITY.md`
+  - **2026-05-06: Anon-Rolle revoked** via `20260506_b_revoke_anon_public.sql` — auf prod angewendet, alle 6 getesteten Tabellen liefern jetzt HTTP 401. Dev: idempotent, noch nicht angewendet (Aufgabe für später, unkritisch)
+  - **Folge-Lücken verbleiben** — siehe Einträge unten
+
+- [x] **`authenticated`-Rolle revoken — Spiegel zu Anon** — ✅ 2026-05-06 angewendet auf prod via `20260507_revoke_authenticated_public.sql`. Smoke-Test (Login + Chat + Upload) erfolgreich. Dev: idempotent, noch ausstehend.
+
+- [ ] 🟠 **Passwort-Reset für alle `app_users` erzwingen** — ~30 Min
+  - **Begründung:** zwischen Setup und 2026-05-06 waren alle `bcrypt`-Hashes in `app_users.password_hash` über den Anon-Key abgreifbar. Wer den Hash hat, kann offline knacken (cost 12 ist zwar teuer aber nicht unmöglich für schwache Passwörter).
+  - **Maßnahme:** alle `app_users.token_version` per `bump_token_version()` erhöhen (zwingt Logout) + Flag „bei nächster Anmeldung Passwort neu setzen". Backend hat bereits Token-Revocation-Infrastruktur (siehe `IMPLEMENTIERT.md` Token-Versions-Eintrag).
+
+- [x] **Prod-`CORS_ORIGINS` verifizieren** — ✅ 2026-05-06: User hat bestätigt, beide Envs setzen die exakte Frontend-URL (kein Wildcard).
+  - Folge-TODO 🟢: Startup-Assert in `backend/app/main.py` ergänzen, der bei `ENVIRONMENT=production` und leerer/`*`-CORS-Liste den Container nicht starten lässt — verhindert versehentliche Lockerung in Zukunft
+
+- [x] **Supabase Studio Basic-Auth prüfen** — ✅ 2026-05-06: User hat bestätigt, lange Zufallspasswörter, nicht Coolify-Default
+
+- [ ] 🟠 **`JWT_SECRET` rotieren — vom Supabase-JWT-Secret entkoppeln** — ~15 Min + UX-Folge
+  - **Befund 2026-05-06:** Backend-`JWT_SECRET` und Supabase-`SERVICE_PASSWORD_JWT` haben den gleichen Wert. Defense-in-depth-Lücke: ein Leak gibt beide Capabilities gleichzeitig (Nutzer-Token-Forge + Service-Role-Token-Forge).
+  - **Maßnahme:** `JWT_SECRET` auf prod + dev neu generieren (`openssl rand -base64 32`), beide Backend-Container neu starten
+  - **Nebenwirkung:** alle aktiven Sessions werden ungültig, Nutzer müssen sich neu anmelden. Refresh-Tokens werden ebenfalls ungültig — Token-Version-Logik im Backend handhabt das aber bereits sauber
+  - `SERVICE_PASSWORD_JWT` *nicht* anfassen (Rotation dort regeneriert alle Supabase-API-Keys, viel mehr Aufwand)
+
+- [ ] 🟡 **`SET search_path` auf RPCs ergänzen** — ~30 Min, Hygiene
+  - Migration `supabase/migrations/20260508_function_search_path.sql`: an `match_document_chunks`, `match_document_assets`, `keyword_search_chunks` jeweils `SET search_path = public, pg_catalog` ergänzen via `CREATE OR REPLACE FUNCTION`
+  - Schließt entsprechende Advisor-Warnungen ohne Verhaltensänderung
+
+- [ ] 🟢 **Langfristig: RLS aktivieren** — mehrwöchig, größter struktureller Gewinn
+  - Auf `app_users`, `pool_*`, `app_documents`, `app_chunks`, `app_audit_logs` RLS einschalten + Policies pro Tabelle
+  - Backend-Code so umstellen, dass user-scoped Reads den User-JWT durchreichen statt universellem `SUPABASE_KEY`
+  - Schließt das Perimeter-Risiko (Service-Role-JWT-Leak = Total-Compromise) endgültig
+  - Detail siehe `docs/SECURITY.md` Abschnitt „Offene Lücken" Punkt 8
+
+- [ ] 🟢 **`vector` Extension nach `extensions`-Schema verschieben** — Hygiene
+  - Invasive Migration (alle pgvector-Operatoren müssen fully-qualified werden); niedrige Priorität
+
 - [ ] 🟠 **Token-Budgets und EUR-Kostenlimits** — ~2–3 Tage
   - Token-Nutzung pro Nutzer pro Zeitraum in `app_usage`-Tabelle verfolgen
   - Admin: max. Tokens/Tag pro Nutzer, max. EUR/Monat pro Gruppe setzen
