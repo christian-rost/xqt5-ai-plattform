@@ -164,7 +164,10 @@ body {
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--transition);
-  z-index: 200;
+  /* Above .content-panel (z-index 200) so the tooltip stays sharp and on
+     top when the secondary sidebar is open and the panel's backdrop-filter
+     would otherwise blur the tooltip behind it. */
+  z-index: 300;
   box-shadow: var(--shadow-sm);
 }
 

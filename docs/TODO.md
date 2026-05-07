@@ -348,6 +348,16 @@ Quellen: `kvml_test/` — die Anforderungen sind direkt als Produktverbesserunge
 - [ ] 🟢 **`vector` Extension nach `extensions`-Schema verschieben** — Hygiene
   - Invasive Migration (alle pgvector-Operatoren müssen fully-qualified werden); niedrige Priorität
 
+- [ ] 🟢 **Automatischer Migration-Runner (parkiert hinter Backups)** — ~1–2 Tage
+  - **Ziel:** SQL-Migrationen automatisch beim Backend-Startup anwenden statt manuell in Studio einzufügen
+  - **Vorbedingung:** automatisierte Postgres-Backups + verifizierter Restore (sonst kein Sicherheitsnetz für eine Migration die etwas zerstört)
+  - **Designvorschlag (recherchiert 2026-05-06, in Memory dokumentiert):** Modul `backend/app/migrate.py` postet via `httpx` SQL an `{SUPABASE_URL}/pg/query` mit dem bestehenden `SUPABASE_KEY` (kein neues Secret), trackt angewendete Filenames in `_app_migrations`-Tabelle (PRIMARY KEY = filename, atomarer apply+record per einzelnem `/pg/query`-Request mit `BEGIN…COMMIT`), Bootstrap-Heuristik: wenn `_app_migrations` fehlt aber `app_users` existiert → alle aktuellen Files als „bereits angewendet" markieren ohne SQL auszuführen
+  - **Sicherheits-Caveat:** kritische Bugs in der ersten Implementierung wurden in einem Audit gefunden (siehe Memory `project_xqt5_supabase.md` und Conversation 2026-05-06): nicht-atomarer apply+record, fehlender DB-Namens-Check, leere-Tracking-Tabelle-Edge-Case. Bei Wiederaufnahme der Arbeit: Audit-Findings vor Implementation nachlesen
+  - **Build-Anforderung:** Dockerfile muss `supabase/migrations/` ins Image kopieren; Build-Context-Anpassung in `docker-compose.coolify.yml` nötig (dev) plus parallele Anpassung der Coolify-Base-Dir auf prod (Backend und Frontend sind dort separate Apps)
+
+- [ ] 🟢 **`20260506_b_revoke_anon_public.sql` auf dev anwenden** — idempotent, ~1 Min
+  - Dev hat aktuell keine Anon-Rolle exponiert, daher kein akutes Risiko. Migration trotzdem anwenden um Konsistenz zwischen Envs herzustellen und gegen künftige Supabase-Template-Updates zu schützen, die anon ggf. wiederaktivieren
+
 - [ ] 🟠 **Token-Budgets und EUR-Kostenlimits** — ~2–3 Tage
   - Token-Nutzung pro Nutzer pro Zeitraum in `app_usage`-Tabelle verfolgen
   - Admin: max. Tokens/Tag pro Nutzer, max. EUR/Monat pro Gruppe setzen
