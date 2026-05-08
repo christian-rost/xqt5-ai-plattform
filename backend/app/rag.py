@@ -937,12 +937,19 @@ async def _apply_optional_rerank(
     settings = rerank_settings or {}
     enabled = bool(settings.get("rerank_enabled", False))
     if not enabled or not chunks:
-        # Without reranking, return all chunks in document order so the LLM
-        # reads the document sequentially and no section is skipped. The count
-        # is already bounded upstream (conversation: top_k=50, pool: top_k=5).
+        # Without reranking, sort chunks by similarity descending so the most
+        # relevant ones from any document come first — naturally interleaves
+        # multi-document results. document_id + chunk_index break ties for
+        # determinism. Earlier behaviour (sort by document_id) caused the
+        # token budget in build_rag_context() to be monopolised by whichever
+        # document had the lowest UUID, dropping later documents silently.
         return sorted(
             chunks,
-            key=lambda c: (c.get("document_id", ""), c.get("chunk_index", 0)),
+            key=lambda c: (
+                -float(c.get("similarity", 0.0)),
+                c.get("document_id", ""),
+                c.get("chunk_index", 0),
+            ),
         )
 
     candidates = max(5, min(100, int(settings.get("rerank_candidates", 50))))
@@ -1130,8 +1137,11 @@ async def enrich_with_neighbors(
 
     Stellt abgeschnittenen Kontext an Chunk-Grenzen wieder her, ohne Schema-Änderungen
     zu erfordern. Nur die Top-N-Chunks (nach Ähnlichkeit) werden erweitert, um die
-    Anzahl der DB-Abfragen zu begrenzen. Alle Chunks werden nach document_id + chunk_index
-    sortiert zurückgegeben, damit das LLM das Dokument sequenziell liest.
+    Anzahl der DB-Abfragen zu begrenzen.
+
+    Rückgabe sortiert nach Ähnlichkeit absteigend (mit document_id + chunk_index
+    als Tiebreaker) — relevanteste Chunks aus beliebigem Dokument zuerst, damit
+    das Token-Budget in `build_rag_context()` mehrere Dokumente fair berücksichtigt.
     """
     if not chunks:
         return chunks
@@ -1180,7 +1190,14 @@ async def enrich_with_neighbors(
         return chunks
 
     combined = chunks + neighbor_chunks
-    return sorted(combined, key=lambda c: (c.get("document_id", ""), c.get("chunk_index", 0)))
+    return sorted(
+        combined,
+        key=lambda c: (
+            -float(c.get("similarity", 0.0)),
+            c.get("document_id", ""),
+            c.get("chunk_index", 0),
+        ),
+    )
 
 
 async def _generate_chunk_context(doc_summary: str, chunk_content: str, model: str) -> str:
@@ -1271,17 +1288,26 @@ def apply_relevance_gate(
     return chunks
 
 
-def build_rag_context(chunks: List[Dict[str, Any]], max_tokens: int = 6000) -> str:
+def build_rag_context(
+    chunks: List[Dict[str, Any]],
+    max_tokens: int = 6000,
+) -> Tuple[str, List[Dict[str, Any]]]:
     """Formatiert abgerufene Chunks als XML-Dokumentenblock für das LLM.
 
     Verwendet XML-Tags gemäß Anthropic-Prompting-Best-Practices. Jede Quelle enthält
     Dateiname, Seitennummer und Abschnittspfad. Das Token-Budget (max_tokens) verhindert,
     dass RAG-Kontext das Kontextfenster dominiert (Phase 7.1 + 7.2).
+
+    Rückgabe: Tupel (xml_text, surviving_chunks). `surviving_chunks` enthält in
+    Original-Reihenfolge nur die Chunks, die ins Token-Budget gepasst haben —
+    Aufrufer müssen daraus `rag_sources` aufbauen, damit Quellenangaben mit dem
+    übereinstimmen, was das LLM wirklich gesehen hat.
     """
     if not chunks:
-        return ""
+        return "", []
 
     doc_parts: List[str] = []
+    surviving: List[Dict[str, Any]] = []
     token_budget = max_tokens
     skipped = 0
 
@@ -1312,10 +1338,11 @@ def build_rag_context(chunks: List[Dict[str, Any]], max_tokens: int = 6000) -> s
             continue
 
         doc_parts.append(doc_block)
+        surviving.append(chunk)
         token_budget -= block_tokens
 
     if not doc_parts:
-        return ""
+        return "", []
 
     if skipped:
         logger.info(
@@ -1323,7 +1350,7 @@ def build_rag_context(chunks: List[Dict[str, Any]], max_tokens: int = 6000) -> s
             skipped, max_tokens,
         )
 
-    return "<documents>\n" + "\n".join(doc_parts) + "\n</documents>"
+    return "<documents>\n" + "\n".join(doc_parts) + "\n</documents>", surviving
 
 
 def build_image_rag_context(assets: List[Dict[str, Any]]) -> str:

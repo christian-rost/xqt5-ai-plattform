@@ -1,0 +1,294 @@
+# Prod-Upgrade-Playbook
+
+Schritt-für-Schritt-Plan für den geplanten Wechsel von Prod auf den aktuellen
+Codebase (`xqt5-ai-plattform`-Repo) mit der neuen Coolify-Topologie. **Lebende
+Datenbank, kein Datenverlust toleriert.** Vor jedem Schritt: nicht
+weitermachen wenn der vorherige nicht erwartungsgemäß abgeschlossen wurde.
+
+Verwandt: `docs/SECURITY.md` (Sicherheitsmodell), `IMPLEMENTIERT.md`
+(Feature-Historie), Memory `project_xqt5_supabase.md` (DB-Architektur).
+
+---
+
+## Vorbedingungen am Tag des Upgrades
+
+- [ ] Wartungsfenster mit Stakeholdern abgestimmt (mindestens 30 Min Puffer).
+- [ ] Aktuelle Prod-URL und Coolify-Zugang bestätigt.
+- [ ] Aktuelle Prod-Branch / Coolify-App-Konfiguration abgespeichert
+      (Screenshot der Coolify-UI für die zwei alten App-Definitionen — zum
+      Rollback brauchst du die exakte vorherige Konfiguration).
+- [ ] Backend-Coolify-Env-Vars exportiert (`OPENAI_API_KEY`, `MISTRAL_API_KEY`,
+      `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `COHERE_API_KEY`, `XAI_API_KEY`,
+      `MAMMOUTH_API_KEY`, plus `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_KEY`,
+      `CORS_ORIGINS`). Kopierfähig in einem sicheren Notepad bereithalten —
+      die neue App-Konfiguration wird sie wieder brauchen.
+- [ ] `SBKEY` und `SBURL` aus dem Backend-Env in deinem Laptop-Terminal
+      gesetzt (siehe `docs/SECURITY.md` Verifikations-Block).
+
+---
+
+## 1. Backup der Datenbank
+
+**Pflicht** vor jeder Migration. Es gibt aktuell keine automatischen Backups
+(siehe TODO `🟢 Backups`-Punkt). Manuell mittels `pg_dump`:
+
+### Option A — SSH auf den Coolify-Host
+
+```bash
+ssh user@coolify-host
+docker ps | grep supabase-db    # → notiere den Container-Namen
+docker exec supabase-db-<id> pg_dump -U postgres -Fc -d postgres \
+    > /home/user/prod_backup_$(date -u +%Y%m%dT%H%M%SZ).dump
+ls -lh /home/user/prod_backup_*.dump   # bestätige Größe (≥ einige MB)
+```
+
+`-Fc` = Custom-Format (komprimiert). Restore-Befehl:
+`pg_restore -U postgres -d postgres /pfad/prod_backup_*.dump`.
+
+### Option B — Über supabase-meta `/pg/query` (read-only Schema + Daten dump)
+
+Nicht empfehlenswert für vollständigen Restore — `/pg/query` kann nur SQL
+ausführen, kein `pg_dump`-äquivalentes Binärformat erzeugen. Nur als
+schwacher Plan B wenn SSH nicht verfügbar ist.
+
+### Verifikation des Backups
+
+```bash
+docker run --rm -v $(pwd):/work postgres:15 \
+    pg_restore --list /work/prod_backup_*.dump | head
+```
+
+Sollte die wichtigsten Tabellen auflisten (`app_users`, `app_documents`,
+`app_document_chunks`, `pool_pools` etc.). Wenn nicht: Backup ist kaputt,
+Upgrade abbrechen.
+
+**Backup an einen sicheren Ort kopieren**, der den Coolify-Host überlebt
+(lokales Laptop, S3-Bucket, andere Maschine). Der Punkt eines Backups ist,
+ihn auch dann zu haben wenn die Maschine ausfällt.
+
+---
+
+## 2. Schema-Vorprüfung — passt das Prod-Schema zum neuen Repo?
+
+Das alte Repo könnte Migrationen haben, die im neuen Repo nicht existieren,
+oder umgekehrt. Vor Anwendung der neuen Migrationen prüfen, dass die
+gemeinsame Basis konsistent ist.
+
+```sh
+# Erwartete Spalten der "alten" Migrationen (1-26 vor 2026-05-06):
+sbq https://supabase.xqtfive.com "select column_name from information_schema.columns where table_name='app_documents' order by ordinal_position"
+sbq https://supabase.xqtfive.com "select column_name from information_schema.columns where table_name='app_document_chunks' order by ordinal_position"
+sbq https://supabase.xqtfive.com "select column_name from information_schema.columns where table_name='app_document_assets' order by ordinal_position"
+```
+
+Erwartung pro Tabelle (Stand 2026-05-07 vor A1/A2):
+- `app_documents`: id, user_id, chat_id, filename, file_type, file_size_bytes, extracted_text, chunk_count, status, error_message, created_at, pool_id, summary
+- `app_document_chunks`: id, document_id, chunk_index, content, embedding, content_fts, created_at, page_number, section_path
+- `app_document_assets`: id, document_id, user_id, pool_id, page_number, asset_type, storage_path, mime_type, width, height, caption, ocr_text, embedding, created_at
+
+Wenn eine Spalte aus dieser Liste **fehlt** auf prod: das alte Repo hatte
+einen anderen Migrationspfad. Manuelle Reconciliation nötig — STOP, mit
+einem Senior-Dev abklären bevor weitergemacht wird.
+
+Wenn alle Spalten **da** sind: prod ist auf demselben Schemastand wie
+unser Repo's Migration 26 (`20260226_rag_sources_persistence.sql`). Sicher,
+A1 und A2 anzuwenden.
+
+---
+
+## 3. Anwendung der ausstehenden Migrationen
+
+Stand der ausstehenden Migrationen auf prod (verifiziert 2026-05-07):
+
+1. `20260506_a_content_hash.sql` — Spalte + 2 partielle Indizes für Upload-Dedup
+2. `20260506_c_asset_phash_recurring.sql` — Bild-pHash-Spalten + RPC-Update
+
+(20260506_b und 20260507 sind bereits angewendet — siehe `SECURITY.md`.)
+
+### Anwendung
+
+In Supabase Studio (Prod) → SQL Editor → für jede Datei in der oben
+genannten Reihenfolge:
+
+1. Inhalt der Datei aus dem Repo kopieren
+2. Im Editor einfügen
+3. **Run** klicken
+4. Ausgabe muss "Success. No rows returned." sein
+5. Falls Fehler: STOP, schau in `docs/SECURITY.md` Sektion "Verifikation"
+   für Diagnostik. Backup ist da — Restore wenn nötig.
+
+### Verifikation nach jeder Migration
+
+```sh
+sbq https://supabase.xqtfive.com "select count(*) from information_schema.columns where table_name='app_documents' and column_name='content_hash'"
+# erwartet: [{"count":1}]
+sbq https://supabase.xqtfive.com "select count(*) from information_schema.columns where table_name='app_document_assets' and column_name='phash'"
+# erwartet: [{"count":1}]
+```
+
+Nicht weitermachen wenn eine der Verifikationen einen anderen Wert liefert.
+
+---
+
+## 4. Coolify-App-Umstellung
+
+### Vorbereitung
+
+- [ ] Aktuelle alte Apps in Coolify nicht löschen — pausieren oder umbenennen
+      mit einem `_OLD`-Suffix. So bleibt der Rollback-Pfad offen.
+
+### Neue Apps erstellen
+
+Zwei separate Coolify-Anwendungen anlegen:
+
+#### Backend-App
+- Repo: `<URL des neuen Repos>` Branch: `dri` (oder Production-Branch)
+- Build-Pack: **Docker Compose**
+- Base Directory: `/`
+- Compose-Datei: `docker-compose.coolify.yml`
+- Service: `backend` (laut compose)
+- Port: 8001 (interner uvicorn-Port; Coolify mappt ihn auf den öffentlichen
+  Hostnamen).
+- Domain: gleiche Prod-Domain wie zuvor
+- Env-Vars: alle aus dem Vorbedingungs-Export wieder eintragen. Keine
+  zwischen-`SUPABASE_URL`/`SUPABASE_KEY`-Versions-Verwechslung — gleich wie
+  vorher.
+
+#### Frontend-App
+- Repo: derselbe + Branch derselbe
+- Build-Pack: **Docker Compose**
+- Base Directory: `/`
+- Service: `frontend`
+- Port: 80
+- Domain: gleiche Prod-Frontend-Domain
+- Env-Vars: `VITE_API_BASE` zeigt auf die Backend-Domain (gleich wie zuvor).
+
+### Erste Build-Versuche
+
+1. Backend-App deployen. Build-Logs in Coolify beobachten.
+2. Wenn der Build durchläuft: Container starten, Logs auf Fehler beim Start
+   prüfen. Erwartete Logs:
+   ```
+   INFO:     Started server process
+   INFO:     Application startup complete.
+   ```
+3. Wenn der Build fehlschlägt:
+   - Häufige Fehler: fehlende Python-Dep (`pip install` Zeile), kaputter
+     Pfad in `docker-compose.coolify.yml`
+   - **Fix nicht durch Hot-Edit der laufenden App** — über git push den
+     Fix einspielen, Coolify rebuild
+4. Frontend-App genauso deployen.
+
+---
+
+## 5. Smoke-Test direkt nach Umstellung
+
+Nicht nur „App lädt" prüfen — exakt diese Pfade durchklicken:
+
+- [ ] Login mit existierendem Test-User (z.B. KKL aus dem dev-Test).
+      Erwartung: Erfolg, alte Konversationen + Pools sichtbar (Daten
+      überlebt das Upgrade weil Supabase nicht angefasst wurde).
+- [ ] Pool öffnen → Übersichts-Tab lädt → Mitglieder + Chats + Dokumente
+      korrekt angezeigt.
+- [ ] Existierende Konversation öffnen → bestehende Nachrichten sichtbar.
+- [ ] Neue Nachricht schicken: erwartet Antwort vom konfigurierten Modell.
+- [ ] Neues Dokument hochladen (PDF, ~2-3 Seiten):
+  - Erwartung: Upload geht durch, Status `processing` → `ready` innerhalb
+    von ~30 Sekunden, Chunks und Embeddings erstellt.
+  - SQL-Verifikation:
+    ```sh
+    sbq https://supabase.xqtfive.com "select status, chunk_count, content_hash from app_documents where filename='<deindateiname>' order by created_at desc limit 1"
+    ```
+- [ ] Mit dem neuen Doc chatten: erwartet RAG-Quellen in der Antwort.
+- [ ] Admin-UI öffnen → Retrieval-Tab → vier Sektionen sichtbar (Embedding,
+      Reranking, Kontextzusammenstellung, Kontextuelles Retrieval). Diese
+      beweisen, dass die A1-Cherry-Pick-Frontend-Toggles und A1/A2-Backend-
+      Migration korrekt sitzen.
+
+Wenn ein Schritt fehlschlägt → in der Sektion "Rollback" weitermachen.
+
+---
+
+## 6. Rollback-Plan
+
+Wenn nach dem Upgrade etwas grundlegend kaputt ist:
+
+### Sofort-Rollback (Anwendungsebene, < 5 Min)
+
+1. Coolify → neue Backend- und Frontend-Apps stoppen.
+2. Coolify → `_OLD`-Apps wieder starten.
+3. DNS/Domain-Routing falls nötig zurückbiegen (sollte automatisch sein
+   wenn die Domain auf die Coolify-Apps zeigt und Coolify selbst routet).
+
+### Datenbank-Rollback (nur wenn Migrationen Schaden anrichten)
+
+Nur wenn die Migrationen aus Sektion 3 etwas Unerwartetes getan haben.
+Symptome: SQL-Fehler in den Backend-Logs, Daten verschwunden, Spalten
+fehlen. Verifikation per SQL-Query bevor man rollback startet.
+
+```bash
+ssh user@coolify-host
+# Container droppen-und-restoren wäre brutal — sicherer: schemaisch zurücksetzen
+docker exec -i supabase-db-<id> psql -U postgres -d postgres < restore_script.sql
+```
+
+Wo `restore_script.sql` gezielt die A1/A2-Spalten droppt:
+```sql
+ALTER TABLE app_documents DROP COLUMN IF EXISTS content_hash;
+DROP INDEX IF EXISTS idx_app_documents_pool_hash;
+DROP INDEX IF EXISTS idx_app_documents_user_hash;
+ALTER TABLE app_document_assets DROP COLUMN IF EXISTS phash;
+ALTER TABLE app_document_assets DROP COLUMN IF EXISTS recurring;
+DROP INDEX IF EXISTS idx_app_document_assets_doc_phash;
+-- match_document_assets RPC NICHT droppen — die alte Definition
+-- aus 20260221_rag_scoped_search.sql wieder anwenden:
+\i /pfad/zu/repo/supabase/migrations/20260221_rag_scoped_search.sql
+```
+
+### Vollständige DB-Wiederherstellung (Worst Case)
+
+Wenn die Migrationen Daten zerstört haben (sollte nicht passieren bei
+den geplanten Migrationen — sie sind alle additive ALTER TABLE):
+
+```bash
+docker exec -i supabase-db-<id> psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS postgres_old; ALTER DATABASE postgres RENAME TO postgres_old;"
+docker exec -i supabase-db-<id> createdb -U postgres postgres
+docker exec -i supabase-db-<id> pg_restore -U postgres -d postgres /home/user/prod_backup_*.dump
+```
+
+Dann Backend-Container neu starten. Sehr invasiv, nur Last Resort.
+
+---
+
+## 7. Post-Deploy-Checks (am Tag nach dem Upgrade)
+
+- [ ] In den Backend-Logs nach Fehlern in den letzten 24h gegrept (z.B.
+      `grep -i "error\|exception\|traceback" coolify_backend.log`).
+- [ ] Sample existierender Pool-Chat geöffnet und eine Frage gestellt —
+      RAG-Quellen werden korrekt referenziert.
+- [ ] Neue Dokument-Uploads (mehrere zur Bestätigung) erfolgreich
+      verarbeitet. Insbesondere ein PDF mit Bildern um pHash-Dedup zu
+      validieren.
+- [ ] Audit-Log enthält die letzten Logins und Upload-Events.
+- [ ] Backup-Datei nicht gelöscht — mindestens 30 Tage aufbewahren.
+
+---
+
+## 8. Bekannte offene Punkte für nach dem Upgrade
+
+Auch nach erfolgreichem Upgrade bleiben einige TODO-Items relevant
+(siehe `docs/TODO.md`):
+
+- [ ] Automatische DB-Backups konfigurieren — Voraussetzung für den
+      Migration-Runner (siehe TODO `🟢 Migration-Runner`)
+- [ ] `JWT_SECRET` rotieren um vom Supabase-JWT-Secret zu entkoppeln
+      (`docs/SECURITY.md` Punkt 4b)
+- [ ] Passwort-Reset für alle `app_users` erzwingen (Bcrypt-Hashes waren
+      während der pre-2026-05-06-Lücke abgreifbar)
+- [ ] `vector` Extension nach `extensions`-Schema verschieben (Hygiene)
+
+---
+
+## Notfall-Kontakte / Eskalation
+
+(Hier bei Bedarf eintragen wer im Notfall zuständig ist und wie erreichbar.)

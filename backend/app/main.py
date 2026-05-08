@@ -623,7 +623,12 @@ async def send_message(
     # Step 2: Inject context — always runs regardless of vector search outcome
     try:
         if chunks:
-            rag_context = rag_mod.build_rag_context(chunks, max_tokens=rag_settings.get("max_context_tokens", 6000))
+            rag_context, surviving_chunks = rag_mod.build_rag_context(
+                chunks, max_tokens=rag_settings.get("max_context_tokens", 6000)
+            )
+            # Build rag_sources from the chunks the LLM actually saw (i.e. those
+            # that fit into the token budget) — otherwise citations would list
+            # documents whose content was silently dropped by build_rag_context.
             rag_sources = [
                 {
                     "filename": c["filename"],
@@ -633,10 +638,10 @@ async def send_message(
                     "page_number": c.get("page_number"),
                     "section_path": rag_mod.extract_section_path(c.get("content", "")),
                 }
-                for c in chunks
+                for c in surviving_chunks
             ]
             _inject_system_context(llm_messages, rag_context)
-            has_doc_context = True
+            has_doc_context = bool(surviving_chunks)
         else:
             docs = documents_mod.list_documents(
                 user_id=current_user["id"],
@@ -2054,7 +2059,9 @@ async def send_pool_message(
     # Step 2: Inject context — always runs regardless of vector search outcome
     try:
         if chunks:
-            rag_context = rag_mod.build_rag_context(chunks, max_tokens=rag_settings.get("max_context_tokens", 6000))
+            rag_context, surviving_chunks = rag_mod.build_rag_context(
+                chunks, max_tokens=rag_settings.get("max_context_tokens", 6000)
+            )
             rag_sources = [
                 {
                     "filename": c["filename"],
@@ -2064,10 +2071,10 @@ async def send_pool_message(
                     "page_number": c.get("page_number"),
                     "section_path": rag_mod.extract_section_path(c.get("content", "")),
                 }
-                for c in chunks
+                for c in surviving_chunks
             ]
             _inject_system_context(llm_messages, rag_context)
-            has_doc_context = True
+            has_doc_context = bool(surviving_chunks)
         else:
             pool_docs = pools_mod.list_pool_documents(pool_id)
             docs_context = _build_available_documents_context(pool_docs)

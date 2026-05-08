@@ -103,10 +103,22 @@ Konkret: Leak von `JWT_SECRET` (AI Workplace) erlaubt nicht nur
 Nutzer-Tokens zu fälschen, sondern auch Supabase-Service-Role-Tokens —
 Total-Compromise.
 
+**Zusatzeskalation 2026-05-07 entdeckt:** `backend/app/encryption.py` leitet
+den Fernet-Schlüssel für `app_provider_keys.encrypted_key` per SHA-256 aus
+`JWT_SECRET` ab. Damit erlaubt ein Leak von `JWT_SECRET` auch das
+Entschlüsseln aller in der DB gespeicherten Provider-API-Keys (OpenAI,
+Anthropic, Mistral, etc.). Ein einzelner Secret-Leak öffnet die ganze
+Plattform inklusive aller Drittanbieter-Schlüssel.
+
 **Maßnahme:** `JWT_SECRET` auf der AI-Workplace-Backend-env auf einen
 neuen Wert rotieren (`openssl rand -base64 32`). Beide Envs (dev + prod)
 betroffen. Nebenwirkung: alle eingeloggten Nutzer werden ausgeloggt und
 müssen sich neu anmelden — vertretbarer einmaliger UX-Verlust.
+**Zusätzliche Nebenwirkung:** alle in `app_provider_keys.encrypted_key`
+gespeicherten API-Keys werden mit dem alten Schlüssel entschlüsselbar
+und müssen mit dem neuen Schlüssel re-encrypted werden. Pragmatisch:
+Provider-Keys über das Admin-UI neu eintragen (löscht den alten Eintrag,
+schreibt mit neuem Schlüssel verschlüsselt).
 
 `SERVICE_PASSWORD_JWT` rotieren wäre invasiver (regeneriert alle
 Supabase-API-Keys), daher Empfehlung: `JWT_SECRET` rotieren, nicht

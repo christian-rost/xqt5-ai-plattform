@@ -728,6 +728,7 @@ def find_existing_document_by_hash(
         supabase.table("app_documents")
         .select("*")
         .eq("content_hash", content_hash)
+        .eq("status", "ready")
     )
     if pool_id:
         query = query.eq("pool_id", pool_id)
