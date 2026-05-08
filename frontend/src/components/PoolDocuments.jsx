@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { api } from '../api'
+import { t } from '../i18n/strings'
 
 export default function PoolDocuments({ poolId, documents, canEdit, onUpload, onUploadText, onDelete }) {
   const fileInputRef = useRef(null)
@@ -156,9 +157,15 @@ export default function PoolDocuments({ poolId, documents, canEdit, onUpload, on
                 {doc.summary && (
                   <span className="pool-doc-summary">{doc.summary}</span>
                 )}
+                {doc.status === 'processing' && (
+                  <span className="doc-badge doc-badge--processing">
+                    <span className="doc-spinner" aria-hidden="true" />
+                    {t('doc.status.processing')}
+                  </span>
+                )}
                 <span className="pool-doc-meta">
                   {doc.status === 'ready' && `${doc.chunk_count} Chunks`}
-                  {doc.status === 'processing' && 'Verarbeitung...'}
+                  {doc.status === 'processing' && t('doc.status.processing.long')}
                   {doc.status === 'error' && (doc.error_message || 'Fehler')}
                   {' \u00B7 '}
                   {(doc.file_size_bytes / 1024).toFixed(0)} KB

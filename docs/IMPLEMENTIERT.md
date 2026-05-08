@@ -181,3 +181,40 @@ Wiring: `Sidebar.jsx` bekommt eine neue `IconOverview`-Komponente und einen vier
 i18n: 19 neue Keys unter `pool.header.*`, `pool.overview.*`, `pool.tab.overview` in `frontend/src/i18n/strings.js`. Alle UI-Strings laufen durch den `t()`-Helper, kein hartcodierter Text in JSX.
 
 Dateien: `frontend/src/components/PoolHeader.jsx` (neu), `frontend/src/components/PoolOverview.jsx` (neu), `frontend/src/components/PoolDetail.jsx`, `frontend/src/components/Sidebar.jsx`, `frontend/src/App.jsx`, `frontend/src/styles.css`, `frontend/src/i18n/strings.js`
+
+---
+
+## RAG-Mehrdokumenten-Bias behoben + Upload-Verarbeitungs-UI (2026-05-07)
+
+### Bug-Befund (verifiziert per 4-Agent-Audit)
+
+Bei einem Chat mit mehreren angehängten Dokumenten (A, B, C) hat das LLM nur Inhalte aus dem Dokument mit der niedrigsten UUID gesehen. Die anderen Dokumente wurden namentlich erwähnt, aber ihr Inhalt war für die Antwort nicht zugänglich. Quellenangaben listeten ebenfalls nur das erste Dokument.
+
+**Ursache:** `_apply_optional_rerank()` und `enrich_with_neighbors()` haben Chunks deterministisch nach `(document_id, chunk_index)` sortiert — alle Chunks von Dokument A zuerst, dann B, dann C. `build_rag_context()` packt anschließend gierig in ein 6000-Token-Budget. Bei ~50 abgerufenen Chunks à ~512 Tokens passten nur ~11–12 ins Budget, und die kamen alle aus dem ersten Dokument. Der Rest wurde stillschweigend verworfen. Existiert seit Commit 3924a41 vom 2026-04-07 (Phase 7.1 Token-Budget-Cherry-Pick).
+
+**Sekundärer Bug:** `rag_sources` (für Quellenangaben im Frontend) wurde aus der vollen Chunk-Liste vor Budget-Pruning gebaut. Citations konnten daher Dokumente listen, deren Inhalt das LLM nie gesehen hat.
+
+**Tertiärer Bug:** `find_existing_document_by_hash()` (A1) hat bei Re-Upload einer Datei das vorhandene Dokument zurückgegeben, unabhängig vom Status. Wenn ein vorheriger Upload `status='error'` oder `status='processing'` hängenblieb, hat jeder erneute Upload derselben Bytes auf dieser kaputten Zeile gepinnt — dauerhafter "neue Uploads werden nicht erkannt"-Fehler.
+
+### Behebung
+
+- **`backend/app/rag.py`** — `_apply_optional_rerank()` und `enrich_with_neighbors()` sortieren jetzt nach `(-similarity, document_id, chunk_index)`. Höchstrelevante Chunks aus beliebigem Dokument kommen zuerst → Token-Budget verteilt sich fair über mehrere Dokumente. Tiebreaker macht Sortierung deterministisch.
+- **`backend/app/rag.py`** — `build_rag_context()` gibt jetzt `Tuple[str, List[chunk]]` zurück. Die Surviving-Liste enthält nur Chunks, die ins Token-Budget gepasst haben — Aufrufer bauen Quellenangaben daraus.
+- **`backend/app/main.py`** — beide Aufrufstellen (Chat-Path Zeile 626, Pool-Path Zeile 2057) entpacken das Tupel und bauen `rag_sources` aus `surviving_chunks`. Citations spiegeln jetzt exakt wider, was das LLM gesehen hat.
+- **`backend/app/documents.py`** — `find_existing_document_by_hash()` filtert jetzt zusätzlich auf `status='ready'`. Re-Uploads nach fehlgeschlagenen Versuchen verarbeiten von Grund auf neu.
+
+### Upload-Verarbeitungs-UI
+
+Neue UX um zu signalisieren, dass ein hochgeladenes Dokument noch nicht RAG-bereit ist:
+
+- **`DocumentList.jsx`** und **`PoolDocuments.jsx`** zeigen einen Verarbeitungs-Badge (Spinner + „Wird verarbeitet"-Text in Orange) statt der vorherigen schwachen `...`-Andeutung
+- **Polling-Mechanismus** in `App.jsx` und `PoolDetail.jsx` — wenn die Doc-Liste irgendein Dokument im `processing`-Status enthält, wird ein 5-Sekunden-Timer geschedult, der `loadDocuments()` erneut aufruft. Badge verschwindet automatisch sobald OCR + Embedding fertig sind. Timer wird beim Unmount/Konversationswechsel abgeräumt.
+- Neue i18n-Keys `doc.status.processing` und `doc.status.processing.long`. Zwei neue CSS-Klassen `.doc-badge--processing` und `.doc-spinner` mit Keyframe-Animation.
+
+### Caveat zur synchronen Upload-Route
+
+Die Upload-Endpunkte in `main.py` sind synchron — der HTTP-Request blockiert bis OCR + Embedding fertig sind. Der Uploader selbst sieht sein Dokument daher nie im `processing`-Status (es ist `ready` oder `error` wenn der Response zurückkommt). Der Verarbeitungs-Badge ist primär für **Multi-Client-Szenarien** (Pool-Kollaboration, mehrere Tabs) und für den Fall, dass ein Browser-Timeout den Request abbricht während der Server weiterarbeitet. In dem Fall sieht der User beim nächsten Refresh ein „processing"-Dokument und kann auf das automatische Auto-Refresh warten.
+
+Längerfristig wäre ein async-Background-Worker mit Status-Poll-Endpunkt der saubere Fix (in TODO als Folge-Aufgabe).
+
+Dateien: `backend/app/rag.py`, `backend/app/main.py`, `backend/app/documents.py`, `frontend/src/components/DocumentList.jsx`, `frontend/src/components/PoolDocuments.jsx`, `frontend/src/components/PoolDetail.jsx`, `frontend/src/App.jsx`, `frontend/src/styles.css`, `frontend/src/i18n/strings.js`

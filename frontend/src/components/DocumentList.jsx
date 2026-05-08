@@ -1,3 +1,5 @@
+import { t } from '../i18n/strings'
+
 export default function DocumentList({ documents, onDelete }) {
   if (!documents || documents.length === 0) return null
 
@@ -17,7 +19,10 @@ export default function DocumentList({ documents, onDelete }) {
             <span className="doc-chunks">{doc.chunk_count}</span>
           )}
           {doc.status === 'processing' && (
-            <span className="doc-processing">...</span>
+            <span className="doc-badge doc-badge--processing">
+              <span className="doc-spinner" aria-hidden="true" />
+              {t('doc.status.processing')}
+            </span>
           )}
           {doc.status === 'error' && (
             <span className="doc-error-icon" title={doc.error_message}>!</span>

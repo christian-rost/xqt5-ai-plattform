@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../api'
 import PoolDocuments from './PoolDocuments'
 import PoolChatList from './PoolChatList'
@@ -37,10 +37,20 @@ export default function PoolDetail({
     onCountsUpdate?.({ docs: documents.length, chats: chats.length, members: members.length })
   }, [documents.length, chats.length, members.length])
 
+  const docsPollTimerRef = useRef(null)
   const loadDocuments = useCallback(async () => {
+    if (docsPollTimerRef.current) {
+      clearTimeout(docsPollTimerRef.current)
+      docsPollTimerRef.current = null
+    }
     try {
       const docs = await api.listPoolDocuments(pool.id)
       setDocuments(docs)
+      // Auto-refresh while any doc is still being processed so the badge
+      // disappears as soon as OCR + embedding completes server-side.
+      if (docs.some((d) => d.status === 'processing')) {
+        docsPollTimerRef.current = setTimeout(loadDocuments, 5000)
+      }
     } catch {}
   }, [pool.id])
 
@@ -62,6 +72,12 @@ export default function PoolDetail({
     loadDocuments()
     loadChats()
     loadMembers()
+    return () => {
+      if (docsPollTimerRef.current) {
+        clearTimeout(docsPollTimerRef.current)
+        docsPollTimerRef.current = null
+      }
+    }
   }, [loadDocuments, loadChats, loadMembers])
 
   async function handleUploadDocument(file, onProgress) {

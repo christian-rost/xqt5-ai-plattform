@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from './api'
 import LoginScreen from './components/LoginScreen'
 import NavRail from './components/NavRail'
@@ -160,8 +160,15 @@ export default function App() {
     }
   }, [activeConversation?.id, defaultModelId])
 
-  // Load documents for active conversation
+  // Load documents for active conversation. If any doc is still 'processing',
+  // schedule a refresh in 5s so the processing badge auto-clears once OCR + embedding
+  // finish, without forcing the user to refresh manually.
+  const docsPollTimerRef = useRef(null)
   const loadDocuments = useCallback(async () => {
+    if (docsPollTimerRef.current) {
+      clearTimeout(docsPollTimerRef.current)
+      docsPollTimerRef.current = null
+    }
     if (!activeConversation?.id) {
       setChatDocuments([])
       return
@@ -169,11 +176,20 @@ export default function App() {
     try {
       const docs = await api.listDocuments(activeConversation.id, 'all')
       setChatDocuments(docs)
+      if (docs.some((d) => d.status === 'processing')) {
+        docsPollTimerRef.current = setTimeout(loadDocuments, 5000)
+      }
     } catch {}
   }, [activeConversation?.id])
 
   useEffect(() => {
     loadDocuments()
+    return () => {
+      if (docsPollTimerRef.current) {
+        clearTimeout(docsPollTimerRef.current)
+        docsPollTimerRef.current = null
+      }
+    }
   }, [loadDocuments])
 
   async function handleAuth(mode, { username, email, password }) {

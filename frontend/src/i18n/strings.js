@@ -43,6 +43,10 @@ const STRINGS = {
     'pool.overview.section.members': 'Mitglieder',
     'pool.overview.section.summary': 'Übersicht',
     'pool.tab.overview': 'Übersicht',
+
+    'doc.status.processing': 'Wird verarbeitet',
+    'doc.status.processing.long':
+      'OCR und Indexierung laufen — der Inhalt ist gleich verfügbar',
   },
   en: {
     // Placeholder for future English translations. Until populated, t() falls

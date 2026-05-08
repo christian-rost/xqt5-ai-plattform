@@ -3266,6 +3266,39 @@ body {
   transform: scale(1.1);
 }
 
+/* ── Document processing badge + spinner ── */
+
+.doc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.doc-badge--processing {
+  background: rgba(238, 127, 0, 0.12);
+  color: var(--color-primary);
+  border: 1px solid rgba(238, 127, 0, 0.3);
+}
+
+.doc-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(238, 127, 0, 0.25);
+  border-top-color: var(--color-primary);
+  animation: doc-spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes doc-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Pool Header ── */
 
 .pool-header {
